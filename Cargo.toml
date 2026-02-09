@@ -1,0 +1,25 @@
+[package]
+name = "gradwork-backend"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+actix-web = "4"
+actix-cors = "0.7"
+actix-files = "0.6"
+actix-web-httpauth = "0.8"
+chrono = { version = "0.4.43", features = ["serde"] }
+dotenv = "0.15.0"
+jsonwebtoken = "9"
+reqwest = { version = "0.11", features = ["json"] }
+moka = { version = "0.12", features = ["future"] }
+serde = { version = "1.0.228", features = ["derive"] }
+serde_json = "1.0.149"
+sea-orm = { version = "2.0.0-rc", features = [ "sqlx-postgres", "runtime-tokio-rustls", "macros" ] }
+thiserror = "2.0.18"
+tokio = { version = "1.49.0", features = ["full"] }
+uuid = { version = "1.20.0", features = ["serde", "v4"] }
+migration = { path = "migration" }
+
+[workspace]
+members = [".", "migration"]

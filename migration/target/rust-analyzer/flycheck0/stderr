@@ -1,0 +1,7 @@
+    Updating crates.io index
+error: failed to select a version for the requirement `sea-orm-migration = "^2.0.0"`
+candidate versions found which didn't match: 2.0.0-rc.30, 2.0.0-rc.29, 2.0.0-rc.28, ...
+location searched: crates.io index
+required by package `migration v0.1.0 (/home/siddheshmhatre/Documents/dev/gradwork-backend/migration)`
+if you are looking for the prerelease package it needs to be specified explicitly
+    sea-orm-migration = { version = "2.0.0-rc.30" }

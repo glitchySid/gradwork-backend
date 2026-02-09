@@ -1,0 +1,57 @@
+pub mod auth;
+pub mod gigs;
+pub mod portfolio;
+pub mod users;
+
+use actix_web::web;
+
+pub fn init_routes(cfg: &mut web::ServiceConfig) {
+    // ── Auth routes (protected by JWT via the AuthenticatedUser extractor) ──
+    cfg.service(
+        web::scope("/auth")
+            .route("/me", web::get().to(auth::me))
+            .route("/complete-profile", web::post().to(auth::complete_profile)),
+    );
+
+    // ── User routes (all protected — require valid JWT) ──
+    cfg.service(
+        web::resource("/users")
+            .route(web::get().to(users::get_users)),
+    );
+    cfg.service(
+        web::resource("/users/{id}")
+            .route(web::get().to(users::get_user))
+            .route(web::put().to(users::update_user))
+            .route(web::delete().to(users::delete_user)),
+    );
+
+    // ── Portfolio routes (all protected — require valid JWT) ──
+    cfg.service(
+        web::resource("/portfolios")
+            .route(web::get().to(portfolio::get_portfolios))
+            .route(web::post().to(portfolio::create_portfolio)),
+    );
+    cfg.service(
+        web::resource("/portfolios/{id}")
+            .route(web::get().to(portfolio::get_portfolio))
+            .route(web::put().to(portfolio::update_portfolio))
+            .route(web::delete().to(portfolio::delete_portfolio)),
+    );
+    cfg.service(
+        web::resource("/portfolios/freelancer/{freelancer_id}")
+            .route(web::get().to(portfolio::get_portfolios_by_freelancer)),
+    );
+
+    // ── Gig routes (all protected — require valid JWT) ──
+    cfg.service(
+        web::resource("/gigs")
+            .route(web::get().to(gigs::get_gigs))
+            .route(web::post().to(gigs::create_gig)),
+    );
+    cfg.service(
+        web::resource("/gigs/{id}")
+            .route(web::get().to(gigs::get_gig))
+            .route(web::put().to(gigs::update_gig))
+            .route(web::delete().to(gigs::delete_gig)),
+    );
+}
