@@ -43,7 +43,7 @@ async fn main() -> std::io::Result<()> {
             .app_data(db_data.clone())
             .app_data(jwks_cache.clone())
             .service(web::scope("/api").configure(handlers::init_routes))
-            .service(Files::new("/", "./frontend").index_file("index.html"))
+            // .service(Files::new("/", "./frontend").index_file("index.html"))
     })
     .bind("127.0.0.1:8080")?
     .run()

@@ -8,7 +8,7 @@ use crate::models::gigs::{CreateGig, UpdateGig};
 
 /// GET /api/gigs — list all gigs (requires authentication).
 pub async fn get_gigs(
-    _user: AuthenticatedUser,
+    // _user: AuthenticatedUser,
     db: web::Data<DatabaseConnection>,
 ) -> impl Responder {
     match gig_db::get_all_gigs(db.get_ref()).await {
@@ -31,6 +31,36 @@ pub async fn get_gig(
         Ok(None) => HttpResponse::NotFound().json(serde_json::json!({
             "error": format!("Gig {id} not found"),
         })),
+        Err(e) => HttpResponse::InternalServerError().json(serde_json::json!({
+            "error": format!("Database error: {e}"),
+        })),
+    }
+}
+
+/// GET /api/gigs/user/{user_id} — get gigs by user_id (requires authentication).
+pub async fn get_gigs_by_user_id(
+    _user: AuthenticatedUser,
+    db: web::Data<DatabaseConnection>,
+    path: web::Path<Uuid>,
+) -> impl Responder {
+    let user_id = path.into_inner();
+    match gig_db::get_gigs_by_user_id(db.get_ref(), user_id).await {
+        Ok(gigs) => HttpResponse::Ok().json(gigs),
+        Err(e) => HttpResponse::InternalServerError().json(serde_json::json!({
+            "error": format!("Database error: {e}"),
+        })),
+    }
+}
+
+/// DELETE /api/gigs/user/{user_id} — delete all gigs by user_id (requires authentication).
+pub async fn delete_all_gig_by_user_id(
+    _user: AuthenticatedUser,
+    db: web::Data<DatabaseConnection>,
+    path: web::Path<Uuid>,
+) -> impl Responder {
+    let user_id = path.into_inner();
+    match gig_db::delete_all_gig_by_user_id(db.get_ref(), user_id).await {
+        Ok(()) => HttpResponse::NoContent().finish(),
         Err(e) => HttpResponse::InternalServerError().json(serde_json::json!({
             "error": format!("Database error: {e}"),
         })),

@@ -20,6 +20,23 @@ pub async fn insert_gig(
 
     new_gig.insert(db).await
 }
+/// Users Gigs
+/// Get gigs from user_id 
+pub async fn get_gigs_by_user_id(
+    db: &DatabaseConnection,
+    user_id: Uuid,
+) -> Result<Vec<gigs::Model>, DbErr> {
+    gigs::Entity::find().filter(gigs::Column::UserId.eq(user_id)).all(db).await
+}
+
+/// Delete a gig by user_id
+pub async fn delete_all_gig_by_user_id(
+    db: &DatabaseConnection,
+    user_id: Uuid,
+) -> Result<(), DbErr> {
+    gigs::Entity::delete_many().filter(gigs::Column::UserId.eq(user_id)).exec(db).await?;
+    Ok(())
+}
 
 /// Fetch all gigs.
 pub async fn get_all_gigs(db: &DatabaseConnection) -> Result<Vec<gigs::Model>, DbErr> {

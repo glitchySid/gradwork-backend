@@ -44,14 +44,14 @@ pub fn init_routes(cfg: &mut web::ServiceConfig) {
 
     // ── Gig routes (all protected — require valid JWT) ──
     cfg.service(
-        web::resource("/gigs")
-            .route(web::get().to(gigs::get_gigs))
-            .route(web::post().to(gigs::create_gig)),
+        web::scope("/gigs")
+            .route("", web::get().to(gigs::get_gigs))
+            .route("", web::post().to(gigs::create_gig))
+            .route("/{id}", web::get().to(gigs::get_gig))
+            .route("/{id}", web::put().to(gigs::update_gig))
+            .route("/{id}", web::delete().to(gigs::delete_gig))
+            .route("/user/{user_id}", web::get().to(gigs::get_gigs_by_user_id))
+            .route("/user/{user_id}", web::delete().to(gigs::delete_all_gig_by_user_id)),
     );
-    cfg.service(
-        web::resource("/gigs/{id}")
-            .route(web::get().to(gigs::get_gig))
-            .route(web::put().to(gigs::update_gig))
-            .route(web::delete().to(gigs::delete_gig)),
-    );
+    
 }
