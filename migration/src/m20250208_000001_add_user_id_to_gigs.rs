@@ -23,14 +23,18 @@ impl MigrationTrait for Migration {
                 Table::alter()
                     .table(Gigs::Table)
                     .add_column(ColumnDef::new(Gigs::UserId).uuid().not_null())
-                    .add_foreign_key(
-                        TableForeignKey::new()
-                            .name("fk_gigs_user_id")
-                            .from(Gigs::Table, Gigs::UserId)
-                            .to(Users::Table, Users::Id)
-                            .on_delete(ForeignKeyAction::Cascade)
-                            .on_update(ForeignKeyAction::Cascade),
-                    )
+                    .to_owned(),
+            )
+            .await?;
+
+        manager
+            .create_foreign_key(
+                ForeignKey::create()
+                    .name("fk_gigs_user_id")
+                    .from(Gigs::Table, Gigs::UserId)
+                    .to(Users::Table, Users::Id)
+                    .on_delete(ForeignKeyAction::Cascade)
+                    .on_update(ForeignKeyAction::Cascade)
                     .to_owned(),
             )
             .await
@@ -38,10 +42,18 @@ impl MigrationTrait for Migration {
 
     async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
         manager
+            .drop_foreign_key(
+                ForeignKey::drop()
+                    .name("fk_gigs_user_id")
+                    .table(Gigs::Table)
+                    .to_owned(),
+            )
+            .await?;
+
+        manager
             .alter_table(
                 Table::alter()
                     .table(Gigs::Table)
-                    .drop_foreign_key("fk_gigs_user_id")
                     .drop_column(Gigs::UserId)
                     .to_owned(),
             )
