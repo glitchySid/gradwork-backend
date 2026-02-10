@@ -64,6 +64,9 @@ pub async fn complete_profile(
     if let Some(display_name) = input.display_name {
         active.display_name = Set(Some(display_name));
     }
+    if let Some(avatar_url) = input.avatar_url {
+        active.avatar_url = Set(Some(avatar_url));
+    }
     active.updated_at = Set(Some(chrono::Utc::now()));
 
     active.update(db).await

@@ -72,6 +72,7 @@ pub struct CompleteProfile {
     pub username: Option<String>,
     pub role: Option<Roles>,
     pub display_name: Option<String>,
+    pub avatar_url: Option<String>,
 }
 
 /// Used for admin-level user updates.

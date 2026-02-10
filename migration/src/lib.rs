@@ -6,6 +6,7 @@ mod m20250206_000003_create_contracts_table;
 mod m20250206_000004_create_portfolios_table;
 mod m20250207_000005_alter_users_for_supabase_auth;
 mod m20250208_000001_add_user_id_to_gigs;
+mod m20250210_000001_add_unique_gig_user_to_contracts;
 
 pub struct Migrator;
 
@@ -19,6 +20,7 @@ impl MigratorTrait for Migrator {
             Box::new(m20250206_000004_create_portfolios_table::Migration),
             Box::new(m20250207_000005_alter_users_for_supabase_auth::Migration),
             Box::new(m20250208_000001_add_user_id_to_gigs::Migration),
+            Box::new(m20250210_000001_add_unique_gig_user_to_contracts::Migration),
         ]
     }
 }

@@ -32,6 +32,42 @@ pub async fn get_contract_by_id(
     contracts::Entity::find_by_id(id).one(db).await
 }
 
+/// Fetch all contracts for a specific gig.
+pub async fn get_contracts_by_gig_id(
+    db: &DatabaseConnection,
+    gig_id: Uuid,
+) -> Result<Vec<contracts::Model>, DbErr> {
+    contracts::Entity::find()
+        .filter(contracts::Column::GigId.eq(gig_id))
+        .all(db)
+        .await
+}
+
+/// Fetch all contracts for a specific user (client who sent the contract request).
+pub async fn get_contracts_by_user_id(
+    db: &DatabaseConnection,
+    user_id: Uuid,
+) -> Result<Vec<contracts::Model>, DbErr> {
+    contracts::Entity::find()
+        .filter(contracts::Column::UserId.eq(user_id))
+        .all(db)
+        .await
+}
+
+/// Check if a contract already exists for a given gig and user combination.
+pub async fn contract_exists_for_gig_and_user(
+    db: &DatabaseConnection,
+    gig_id: Uuid,
+    user_id: Uuid,
+) -> Result<bool, DbErr> {
+    let count = contracts::Entity::find()
+        .filter(contracts::Column::GigId.eq(gig_id))
+        .filter(contracts::Column::UserId.eq(user_id))
+        .count(db)
+        .await?;
+    Ok(count > 0)
+}
+
 /// Update the status of a contract.
 pub async fn update_contract_status(
     db: &DatabaseConnection,

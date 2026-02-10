@@ -446,6 +446,129 @@ Delete a portfolio item. Must be the owner.
 
 ---
 
+### Contracts
+
+Contracts represent a client's request to hire a freelancer for a specific gig. The flow is:
+
+1. A **freelancer** posts a gig offering their services.
+2. A **client** browses gigs and sends a contract request (`POST /api/contracts`).
+3. The **freelancer** (gig owner) accepts or rejects the contract (`PUT /api/contracts/{id}/status`).
+
+Only one contract per client per gig is allowed (enforced by a unique constraint).
+
+#### `POST /api/contracts`
+
+Create a contract request on a freelancer's gig. The `user_id` is automatically set from the authenticated user (the client).
+
+**Headers:** `Authorization: Bearer <token>`
+
+**Body:**
+
+```json
+{
+  "gig_id": "uuid-of-the-gig"
+}
+```
+
+**Response (201):** Created contract object.
+
+```json
+{
+  "id": "uuid",
+  "gig_id": "uuid",
+  "user_id": "uuid",
+  "status": "Pending",
+  "created_at": "2025-02-10T00:00:00Z"
+}
+```
+
+**Response (400):** `{ "error": "You cannot create a contract on your own gig" }`
+**Response (404):** `{ "error": "Gig {id} not found" }`
+**Response (409):** `{ "error": "You have already sent a contract request for this gig" }`
+
+---
+
+#### `GET /api/contracts`
+
+List all contracts relevant to the authenticated user (where the user is either the client or the gig owner).
+
+**Headers:** `Authorization: Bearer <token>`
+
+**Response (200):** Array of contract objects.
+
+---
+
+#### `GET /api/contracts/{id}`
+
+Get a single contract. Only the client or the gig owner can view it.
+
+**Headers:** `Authorization: Bearer <token>`
+
+**Response (200):** Contract object.
+**Response (403):** `{ "error": "You can only view contracts you are involved in" }`
+**Response (404):** `{ "error": "Contract {id} not found" }`
+
+---
+
+#### `PUT /api/contracts/{id}/status`
+
+Accept or reject a contract. Only the gig owner (freelancer) can update the status, and only while the contract is Pending.
+
+**Headers:** `Authorization: Bearer <token>`
+
+**Body:**
+
+```json
+{
+  "status": "Accepted"
+}
+```
+
+Valid statuses: `"Accepted"`, `"Rejected"`.
+
+**Response (200):** Updated contract object.
+**Response (400):** `{ "error": "Contract is already Accepted. Only pending contracts can be updated." }`
+**Response (403):** `{ "error": "Only the gig owner (freelancer) can accept or reject contracts" }`
+**Response (404):** `{ "error": "Contract {id} not found" }`
+
+---
+
+#### `DELETE /api/contracts/{id}`
+
+Withdraw a pending contract request. Only the client who created it can withdraw, and only while Pending.
+
+**Headers:** `Authorization: Bearer <token>`
+
+**Response (200):** `{ "message": "Contract {id} withdrawn" }`
+**Response (400):** `{ "error": "Contract is already Accepted. Only pending contracts can be withdrawn." }`
+**Response (403):** `{ "error": "You can only withdraw your own contract requests" }`
+**Response (404):** `{ "error": "Contract {id} not found" }`
+
+---
+
+#### `GET /api/contracts/gig/{gig_id}`
+
+Get all contracts for a specific gig. Only the gig owner (freelancer) can view these.
+
+**Headers:** `Authorization: Bearer <token>`
+
+**Response (200):** Array of contract objects.
+**Response (403):** `{ "error": "Only the gig owner can view contracts for this gig" }`
+**Response (404):** `{ "error": "Gig {gig_id} not found" }`
+
+---
+
+#### `GET /api/contracts/user/{user_id}`
+
+Get all contracts sent by a specific user (as a client). Users can only view their own.
+
+**Headers:** `Authorization: Bearer <token>`
+
+**Response (200):** Array of contract objects.
+**Response (403):** `{ "error": "You can only view your own contracts" }`
+
+---
+
 ## Database Schema
 
 ### users
@@ -483,6 +606,8 @@ Delete a portfolio item. Must be the owner.
 | status     | VARCHAR      | "pending", "accepted", "rejected" |
 | created_at | TIMESTAMPTZ  |                          |
 
+**Constraints:** `UNIQUE(gig_id, user_id)` — one contract per client per gig.
+
 ### portfolios
 
 | Column        | Type         | Notes                    |
@@ -513,6 +638,7 @@ gradwork-backend/
       users.rs           # /api/users/* handlers
       gigs.rs            # /api/gigs/* handlers
       portfolio.rs       # /api/portfolios/* handlers
+      contracts.rs       # /api/contracts/* handlers
     db/
       mod.rs             # Database pool creation
       users.rs           # User DB queries

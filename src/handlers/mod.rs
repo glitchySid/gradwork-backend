@@ -1,4 +1,5 @@
 pub mod auth;
+pub mod contracts;
 pub mod gigs;
 pub mod portfolio;
 pub mod users;
@@ -52,6 +53,18 @@ pub fn init_routes(cfg: &mut web::ServiceConfig) {
             .route("/{id}", web::delete().to(gigs::delete_gig))
             .route("/user/{user_id}", web::get().to(gigs::get_gigs_by_user_id))
             .route("/user/{user_id}", web::delete().to(gigs::delete_all_gig_by_user_id)),
+    );
+
+    // ── Contract routes (all protected — require valid JWT) ──
+    cfg.service(
+        web::scope("/contracts")
+            .route("", web::get().to(contracts::get_contracts))
+            .route("", web::post().to(contracts::create_contract))
+            .route("/{id}", web::get().to(contracts::get_contract))
+            .route("/{id}", web::delete().to(contracts::delete_contract))
+            .route("/{id}/status", web::put().to(contracts::update_status))
+            .route("/gig/{gig_id}", web::get().to(contracts::get_contracts_by_gig))
+            .route("/user/{user_id}", web::get().to(contracts::get_contracts_by_user)),
     );
     
 }
