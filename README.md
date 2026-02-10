@@ -569,6 +569,184 @@ Get all contracts sent by a specific user (as a client). Users can only view the
 
 ---
 
+### Chat
+
+Real-time messaging between clients and freelancers, scoped to accepted contracts. The chat system uses WebSocket for real-time delivery and REST endpoints for history and conversation management.
+
+**Access control:** Only the two parties of an accepted contract (the client who created it and the freelancer who owns the gig) can access the chat.
+
+#### WebSocket: `GET /api/chat/ws/{contract_id}?token=<jwt>`
+
+Upgrades the HTTP connection to a WebSocket for real-time chat.
+
+**Authentication:** Pass the JWT as a `token` query parameter (browsers cannot send `Authorization` headers during WebSocket handshake).
+
+**Connection requirements:**
+- The contract must exist and have `Accepted` status.
+- The connecting user must be a party to the contract (client or freelancer).
+
+**Example (JavaScript):**
+
+```javascript
+const token = session.access_token
+const contractId = 'uuid-of-the-contract'
+const ws = new WebSocket(`ws://127.0.0.1:8080/api/chat/ws/${contractId}?token=${token}`)
+
+ws.onmessage = (event) => {
+  const msg = JSON.parse(event.data)
+  console.log(msg)
+}
+```
+
+##### Client -> Server Messages
+
+**Send a message:**
+
+```json
+{ "type": "send_message", "content": "Hello!" }
+```
+
+**Mark a message as read:**
+
+```json
+{ "type": "mark_read", "message_id": "uuid-of-the-message" }
+```
+
+**Typing indicator:**
+
+```json
+{ "type": "typing" }
+```
+
+**Stop typing:**
+
+```json
+{ "type": "stop_typing" }
+```
+
+##### Server -> Client Messages
+
+**New message (broadcast to all participants):**
+
+```json
+{
+  "type": "new_message",
+  "id": "uuid",
+  "sender_id": "uuid",
+  "content": "Hello!",
+  "created_at": "2025-02-10T12:00:00+00:00"
+}
+```
+
+**Message read acknowledgment:**
+
+```json
+{ "type": "message_read", "message_id": "uuid" }
+```
+
+**User typing:**
+
+```json
+{ "type": "user_typing", "user_id": "uuid" }
+```
+
+**User stopped typing:**
+
+```json
+{ "type": "user_stop_typing", "user_id": "uuid" }
+```
+
+**Presence update (sent when a user connects/disconnects):**
+
+```json
+{ "type": "presence", "user_id": "uuid", "online": true }
+```
+
+**Error:**
+
+```json
+{ "type": "error", "message": "Description of the error" }
+```
+
+---
+
+#### `GET /api/chat/{contract_id}/messages`
+
+Fetch paginated message history for a contract. Messages are returned in reverse chronological order (newest first).
+
+**Headers:** `Authorization: Bearer <token>`
+
+**Query parameters:**
+
+| Param | Type   | Default | Description          |
+|-------|--------|---------|----------------------|
+| page  | u64    | 1       | Page number (1-based)|
+| limit | u64    | 50      | Messages per page (max 100) |
+
+**Response (200):**
+
+```json
+[
+  {
+    "id": "uuid",
+    "contract_id": "uuid",
+    "sender_id": "uuid",
+    "content": "Hello!",
+    "is_read": false,
+    "created_at": "2025-02-10T12:00:00Z"
+  }
+]
+```
+
+**Response (403):** `{ "error": "You are not a party to this contract" }`
+**Response (404):** `{ "error": "Contract {id} not found" }`
+
+---
+
+#### `PUT /api/chat/messages/{id}/read`
+
+Mark a specific message as read.
+
+**Headers:** `Authorization: Bearer <token>`
+
+**Response (200):** Updated message object.
+
+```json
+{
+  "id": "uuid",
+  "contract_id": "uuid",
+  "sender_id": "uuid",
+  "content": "Hello!",
+  "is_read": true,
+  "created_at": "2025-02-10T12:00:00Z"
+}
+```
+
+---
+
+#### `GET /api/chat/conversations`
+
+List all accepted contracts with chat information for the authenticated user. Returns a summary for each conversation, sorted by most recent activity.
+
+**Headers:** `Authorization: Bearer <token>`
+
+**Response (200):**
+
+```json
+[
+  {
+    "contract_id": "uuid",
+    "other_user_id": "uuid",
+    "other_user_name": "Jane Doe",
+    "last_message": "Sounds good, let's proceed!",
+    "last_message_at": "2025-02-10T14:30:00Z",
+    "unread_count": 2
+  }
+]
+```
+
+---
+
 ## Database Schema
 
 ### users
@@ -619,6 +797,19 @@ Get all contracts sent by a specific user (as a client). Users can only view the
 | price         | DOUBLE       |                          |
 | created_at    | TIMESTAMPTZ  |                          |
 
+### messages
+
+| Column      | Type         | Notes                              |
+|-------------|--------------|------------------------------------|
+| id          | UUID (PK)    |                                    |
+| contract_id | UUID (FK)    | References contracts(id), CASCADE  |
+| sender_id   | UUID (FK)    | References users(id), CASCADE      |
+| content     | TEXT         |                                    |
+| is_read     | BOOLEAN      | Default: false                     |
+| created_at  | TIMESTAMPTZ  |                                    |
+
+**Indexes:** `idx_messages_contract_created` on `(contract_id, created_at)` for efficient history queries.
+
 ---
 
 ## Project Structure
@@ -632,6 +823,11 @@ gradwork-backend/
       middleware.rs      # AuthenticatedUser extractor (JWT validation)
       jwks.rs            # JWKS cache for Supabase token verification
       jwt.rs             # JWT claims and validation
+    chat/
+      mod.rs             # Chat module exports
+      protocol.rs        # WebSocket message types (Client/Server)
+      server.rs          # ChatServer room manager (join/leave/broadcast/presence)
+      session.rs         # WebSocket handshake + session loop
     handlers/
       mod.rs             # Route registration
       auth.rs            # /api/auth/* handlers
@@ -639,18 +835,21 @@ gradwork-backend/
       gigs.rs            # /api/gigs/* handlers
       portfolio.rs       # /api/portfolios/* handlers
       contracts.rs       # /api/contracts/* handlers
+      chat.rs            # /api/chat/* REST handlers
     db/
       mod.rs             # Database pool creation
       users.rs           # User DB queries
       gigs.rs            # Gig DB queries
       portfolio.rs       # Portfolio DB queries
       contracts.rs       # Contract DB queries
+      messages.rs        # Message DB queries
     models/
       mod.rs             # Module exports
       users.rs           # User entity + DTOs
       gigs.rs            # Gig entity + DTOs
       portfolio.rs       # Portfolio entity + DTOs
       contracts.rs       # Contract entity + DTOs
+      messages.rs        # Message entity + DTOs
   migration/
     src/
       lib.rs             # Migration registry
@@ -658,4 +857,5 @@ gradwork-backend/
       m20250206_*.rs     # Migration files
       m20250207_*.rs
       m20250208_*.rs
+      m20250210_*.rs
 ```
