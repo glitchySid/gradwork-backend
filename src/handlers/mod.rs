@@ -1,4 +1,5 @@
 pub mod auth;
+pub mod chat;
 pub mod contracts;
 pub mod gigs;
 pub mod portfolio;
@@ -65,6 +66,20 @@ pub fn init_routes(cfg: &mut web::ServiceConfig) {
             .route("/{id}/status", web::put().to(contracts::update_status))
             .route("/gig/{gig_id}", web::get().to(contracts::get_contracts_by_gig))
             .route("/user/{user_id}", web::get().to(contracts::get_contracts_by_user)),
+    );
+
+    // ── Chat routes ──
+    // WebSocket endpoint (auth via query param token):
+    cfg.service(
+        web::resource("/chat/ws/{contract_id}")
+            .route(web::get().to(crate::chat::session::ws_connect)),
+    );
+    // REST endpoints (auth via Authorization header):
+    cfg.service(
+        web::scope("/chat")
+            .route("/conversations", web::get().to(chat::get_conversations))
+            .route("/{contract_id}/messages", web::get().to(chat::get_messages))
+            .route("/messages/{id}/read", web::put().to(chat::mark_message_read)),
     );
     
 }
