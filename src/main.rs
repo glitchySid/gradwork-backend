@@ -22,18 +22,18 @@ async fn main() -> std::io::Result<()> {
         .expect("Invalid SUPABASE_URL format. Expected: https://PROJECT.supabase.co");
 
     let supabase_anon_key = std::env::var("SUPABASE_ANON_KEY").expect("SUPABASE_ANON_KEY must be set");
-    println!("DEBUG: project_ref = {}", project_ref);
-    println!("DEBUG: anon_key prefix = {}", &supabase_anon_key[..50]);
     let jwks_cache = web::Data::new(Arc::new(JwksCache::new(project_ref, &supabase_anon_key)));
 
     // Create the shared chat server (room manager for WebSocket connections).
     let chat_server = web::Data::new(Arc::new(ChatServer::new()));
 
-    println!("Server running at http://127.0.0.1:8080");
+    let port = std::env::var("PORT").unwrap_or_else(|_| "8080".to_string());
+    let bind_addr = format!("0.0.0.0:{}", port);
+    println!("Server running at http://{}", bind_addr);
 
     HttpServer::new(move || {
         let cors = Cors::default()
-            .allowed_origin("http://localhost:3000")
+            .allow_any_origin()
             .allowed_methods(vec!["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"])
             .allowed_headers(vec![
                 actix_web::http::header::AUTHORIZATION,
@@ -50,7 +50,7 @@ async fn main() -> std::io::Result<()> {
             .service(web::scope("/api").configure(handlers::init_routes))
             // .service(Files::new("/", "./frontend").index_file("index.html"))
     })
-    .bind("127.0.0.1:8080")?
+    .bind(&bind_addr)?
     .run()
     .await
 }
