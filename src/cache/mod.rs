@@ -1,5 +1,5 @@
-use redis::{aio::ConnectionManager, Client, RedisError};
-use serde::{de::DeserializeOwned, Serialize};
+use redis::{Client, RedisError, aio::ConnectionManager};
+use serde::{Serialize, de::DeserializeOwned};
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -154,11 +154,11 @@ pub struct CacheConfig {
 impl Default for CacheConfig {
     fn default() -> Self {
         Self {
-            gig_list_ttl: Duration::from_secs(300),      // 5 minutes
-            gig_ttl: Duration::from_secs(600),           // 10 minutes
-            user_ttl: Duration::from_secs(900),          // 15 minutes
-            conversation_ttl: Duration::from_secs(300),  // 5 minutes
-            message_ttl: Duration::from_secs(60),        // 1 minute
+            gig_list_ttl: Duration::from_secs(300),     // 5 minutes
+            gig_ttl: Duration::from_secs(600),          // 10 minutes
+            user_ttl: Duration::from_secs(900),         // 15 minutes
+            conversation_ttl: Duration::from_secs(300), // 5 minutes
+            message_ttl: Duration::from_secs(60),       // 1 minute
         }
     }
 }

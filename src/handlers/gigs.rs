@@ -4,7 +4,7 @@ use std::sync::Arc;
 use uuid::Uuid;
 
 use crate::auth::middleware::AuthenticatedUser;
-use crate::cache::{keys, RedisCache};
+use crate::cache::{RedisCache, keys};
 use crate::db::gigs as gig_db;
 use crate::models::gigs::{CreateGig, UpdateGig};
 
@@ -41,9 +41,7 @@ pub async fn get_gig(
             match gig_db::get_gig_by_id(db.get_ref(), id).await {
                 Ok(Some(gig)) => {
                     // Store in cache (10 minute TTL)
-                    let _ = cache
-                        .set(&cache_key, &gig, Some(600))
-                        .await;
+                    let _ = cache.set(&cache_key, &gig, Some(600)).await;
                     HttpResponse::Ok().json(gig)
                 }
                 Ok(None) => HttpResponse::NotFound().json(serde_json::json!({

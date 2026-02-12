@@ -4,7 +4,7 @@ use std::sync::Arc;
 use uuid::Uuid;
 
 use crate::auth::middleware::AuthenticatedUser;
-use crate::cache::{keys, RedisCache};
+use crate::cache::{RedisCache, keys};
 use crate::db::contracts as contract_db;
 use crate::db::gigs as gig_db;
 use crate::db::messages as message_db;
@@ -109,7 +109,9 @@ pub async fn mark_message_read(
 
     match message_db::mark_message_as_read(db.get_ref(), message_id).await {
         Ok(msg) => {
-            let _ = cache.delete(&keys::conversations(&user_id.to_string())).await;
+            let _ = cache
+                .delete(&keys::conversations(&user_id.to_string()))
+                .await;
             let response: MessageResponse = msg.into();
             HttpResponse::Ok().json(response)
         }

@@ -6,10 +6,10 @@
 ///!
 ///! Run with: `cargo test --test auth_test`
 use chrono::Utc;
-use jsonwebtoken::{encode, Algorithm, EncodingKey, Header};
+use jsonwebtoken::{Algorithm, EncodingKey, Header, encode};
 use uuid::Uuid;
 
-use gradwork_backend::auth::jwt::{validate_token, Claims, UserMetadata};
+use gradwork_backend::auth::jwt::{Claims, UserMetadata, validate_token};
 
 /// A fake secret for testing — never use the real one in tests committed to git.
 const TEST_SECRET: &str = "test-secret-at-least-256-bits-long-for-hs256-xxxxxxx";

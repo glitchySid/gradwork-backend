@@ -30,7 +30,8 @@ async fn main() -> std::io::Result<()> {
         .and_then(|s| s.strip_suffix(".supabase.co"))
         .expect("Invalid SUPABASE_URL format. Expected: https://PROJECT.supabase.co");
 
-    let supabase_anon_key = std::env::var("SUPABASE_ANON_KEY").expect("SUPABASE_ANON_KEY must be set");
+    let supabase_anon_key =
+        std::env::var("SUPABASE_ANON_KEY").expect("SUPABASE_ANON_KEY must be set");
     let jwks_cache = web::Data::new(Arc::new(JwksCache::new(project_ref, &supabase_anon_key)));
 
     // Create the shared chat server (room manager for WebSocket connections).
@@ -58,7 +59,7 @@ async fn main() -> std::io::Result<()> {
             .app_data(jwks_cache.clone())
             .app_data(chat_server.clone())
             .service(web::scope("/api").configure(handlers::init_routes))
-            // .service(Files::new("/", "./frontend").index_file("index.html"))
+        // .service(Files::new("/", "./frontend").index_file("index.html"))
     })
     .bind(&bind_addr)?
     .run()

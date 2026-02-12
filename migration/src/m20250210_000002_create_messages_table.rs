@@ -37,12 +37,7 @@ impl MigrationTrait for Migration {
                 Table::create()
                     .table(Messages::Table)
                     .if_not_exists()
-                    .col(
-                        ColumnDef::new(Messages::Id)
-                            .uuid()
-                            .not_null()
-                            .primary_key(),
-                    )
+                    .col(ColumnDef::new(Messages::Id).uuid().not_null().primary_key())
                     .col(ColumnDef::new(Messages::ContractId).uuid().not_null())
                     .col(ColumnDef::new(Messages::SenderId).uuid().not_null())
                     .col(ColumnDef::new(Messages::Content).text().not_null())

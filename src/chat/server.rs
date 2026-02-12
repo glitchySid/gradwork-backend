@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use tokio::sync::{mpsc, RwLock};
+use tokio::sync::{RwLock, mpsc};
 use uuid::Uuid;
 
 use crate::chat::protocol::ServerMessage;
@@ -117,12 +117,7 @@ impl ChatServer {
     }
 
     /// Send a message to all connections of a specific user in a contract.
-    pub async fn send_to_user(
-        &self,
-        contract_id: Uuid,
-        user_id: Uuid,
-        message: ServerMessage,
-    ) {
+    pub async fn send_to_user(&self, contract_id: Uuid, user_id: Uuid, message: ServerMessage) {
         let rooms = self.rooms.read().await;
         if let Some(room) = rooms.get(&contract_id) {
             for client in room {

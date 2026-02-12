@@ -4,7 +4,7 @@ use std::sync::Arc;
 use uuid::Uuid;
 
 use crate::auth::middleware::AuthenticatedUser;
-use crate::cache::{keys, RedisCache};
+use crate::cache::{RedisCache, keys};
 use crate::db::portfolio as portfolio_db;
 use crate::models::portfolio::{CreatePortfolio, UpdatePortfolio};
 
@@ -91,7 +91,9 @@ pub async fn create_portfolio(
 
     match portfolio_db::insert_portfolio(db.get_ref(), input).await {
         Ok(item) => {
-            let _ = cache.delete(&keys::portfolio(&auth_user.0.id.to_string())).await;
+            let _ = cache
+                .delete(&keys::portfolio(&auth_user.0.id.to_string()))
+                .await;
             HttpResponse::Created().json(item)
         }
         Err(e) => HttpResponse::InternalServerError().json(serde_json::json!({
@@ -132,7 +134,9 @@ pub async fn update_portfolio(
 
     match portfolio_db::update_portfolio(db.get_ref(), id, body.into_inner()).await {
         Ok(updated) => {
-            let _ = cache.delete(&keys::portfolio(&auth_user.0.id.to_string())).await;
+            let _ = cache
+                .delete(&keys::portfolio(&auth_user.0.id.to_string()))
+                .await;
             HttpResponse::Ok().json(updated)
         }
         Err(e) => HttpResponse::InternalServerError().json(serde_json::json!({
@@ -173,7 +177,9 @@ pub async fn delete_portfolio(
     match portfolio_db::delete_portfolio(db.get_ref(), id).await {
         Ok(result) => {
             if result.rows_affected > 0 {
-                let _ = cache.delete(&keys::portfolio(&auth_user.0.id.to_string())).await;
+                let _ = cache
+                    .delete(&keys::portfolio(&auth_user.0.id.to_string()))
+                    .await;
                 HttpResponse::Ok().json(serde_json::json!({
                     "message": format!("Portfolio item {id} deleted"),
                 }))
