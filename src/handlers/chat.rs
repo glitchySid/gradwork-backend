@@ -4,7 +4,7 @@ use std::sync::Arc;
 use uuid::Uuid;
 
 use crate::auth::middleware::AuthenticatedUser;
-use crate::cache::{keys, RedisCache};
+use crate::cache::{RedisCache, keys};
 use crate::db::contracts as contract_db;
 use crate::db::gigs as gig_db;
 use crate::db::messages as message_db;
@@ -75,7 +75,7 @@ pub async fn get_messages(
 
     let page = query.page.unwrap_or(1).max(1);
     let limit = query.limit.unwrap_or(50).min(100);
-    let cache_key = format!("messages:{}:{}:{}", contract_id, page, limit);
+    let cache_key = format!("messages:{contract_id}:{page}:{limit}");
 
     match cache.get::<Vec<MessageResponse>>(&cache_key).await {
         Ok(Some(cached)) => return HttpResponse::Ok().json(cached),
@@ -109,7 +109,9 @@ pub async fn mark_message_read(
 
     match message_db::mark_message_as_read(db.get_ref(), message_id).await {
         Ok(msg) => {
-            let _ = cache.delete(&keys::conversations(&user_id.to_string())).await;
+            let _ = cache
+                .delete(&keys::conversations(&user_id.to_string()))
+                .await;
             let response: MessageResponse = msg.into();
             HttpResponse::Ok().json(response)
         }

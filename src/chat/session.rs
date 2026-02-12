@@ -55,9 +55,7 @@ pub async fn ws_connect(
     // 2. Fetch the contract and verify it's Accepted.
     let contract = contract_db::get_contract_by_id(db.get_ref(), contract_id)
         .await
-        .map_err(|e| {
-            actix_web::error::ErrorInternalServerError(format!("Database error: {e}"))
-        })?
+        .map_err(|e| actix_web::error::ErrorInternalServerError(format!("Database error: {e}")))?
         .ok_or_else(|| {
             actix_web::error::ErrorNotFound(format!("Contract {contract_id} not found"))
         })?;
@@ -251,16 +249,12 @@ async fn handle_client_message(
         ClientMessage::Typing => {
             let msg = ServerMessage::UserTyping { user_id };
             // Only send to others — the sender already knows they're typing.
-            chat_server
-                .broadcast(contract_id, msg, Some(user_id))
-                .await;
+            chat_server.broadcast(contract_id, msg, Some(user_id)).await;
         }
 
         ClientMessage::StopTyping => {
             let msg = ServerMessage::UserStopTyping { user_id };
-            chat_server
-                .broadcast(contract_id, msg, Some(user_id))
-                .await;
+            chat_server.broadcast(contract_id, msg, Some(user_id)).await;
         }
     }
 }

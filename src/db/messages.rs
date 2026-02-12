@@ -1,5 +1,5 @@
-use sea_orm::*;
 use sea_orm::prelude::Expr;
+use sea_orm::*;
 use uuid::Uuid;
 
 use crate::models::messages::{self, CreateMessage};

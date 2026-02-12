@@ -16,10 +16,7 @@ pub fn init_routes(cfg: &mut web::ServiceConfig) {
     );
 
     // ── User routes (all protected — require valid JWT) ──
-    cfg.service(
-        web::resource("/users")
-            .route(web::get().to(users::get_users)),
-    );
+    cfg.service(web::resource("/users").route(web::get().to(users::get_users)));
     cfg.service(
         web::resource("/users/{id}")
             .route(web::get().to(users::get_user))
@@ -53,7 +50,10 @@ pub fn init_routes(cfg: &mut web::ServiceConfig) {
             .route("/{id}", web::put().to(gigs::update_gig))
             .route("/{id}", web::delete().to(gigs::delete_gig))
             .route("/user/{user_id}", web::get().to(gigs::get_gigs_by_user_id))
-            .route("/user/{user_id}", web::delete().to(gigs::delete_all_gig_by_user_id)),
+            .route(
+                "/user/{user_id}",
+                web::delete().to(gigs::delete_all_gig_by_user_id),
+            ),
     );
 
     // ── Contract routes (all protected — require valid JWT) ──
@@ -64,8 +64,14 @@ pub fn init_routes(cfg: &mut web::ServiceConfig) {
             .route("/{id}", web::get().to(contracts::get_contract))
             .route("/{id}", web::delete().to(contracts::delete_contract))
             .route("/{id}/status", web::put().to(contracts::update_status))
-            .route("/gig/{gig_id}", web::get().to(contracts::get_contracts_by_gig))
-            .route("/user/{user_id}", web::get().to(contracts::get_contracts_by_user)),
+            .route(
+                "/gig/{gig_id}",
+                web::get().to(contracts::get_contracts_by_gig),
+            )
+            .route(
+                "/user/{user_id}",
+                web::get().to(contracts::get_contracts_by_user),
+            ),
     );
 
     // ── Chat routes ──
@@ -79,7 +85,9 @@ pub fn init_routes(cfg: &mut web::ServiceConfig) {
         web::scope("/chat")
             .route("/conversations", web::get().to(chat::get_conversations))
             .route("/{contract_id}/messages", web::get().to(chat::get_messages))
-            .route("/messages/{id}/read", web::put().to(chat::mark_message_read)),
+            .route(
+                "/messages/{id}/read",
+                web::put().to(chat::mark_message_read),
+            ),
     );
-    
 }

@@ -4,7 +4,7 @@ use std::sync::Arc;
 use uuid::Uuid;
 
 use crate::auth::middleware::AuthenticatedUser;
-use crate::cache::{keys, RedisCache};
+use crate::cache::{RedisCache, keys};
 use crate::db::users as user_db;
 use crate::models::users::{UpdateUser, UserResponse};
 
@@ -37,7 +37,7 @@ pub async fn get_user(
     // Try to get from cache first
     match cache.get::<serde_json::Value>(&cache_key).await {
         Ok(Some(cached)) => {
-            return HttpResponse::Ok().json(cached);
+            HttpResponse::Ok().json(cached)
         }
         Ok(None) => {
             // Cache miss - fetch from database
@@ -45,9 +45,7 @@ pub async fn get_user(
                 Ok(Some(user)) => {
                     let response = UserResponse::from(user);
                     // Store in cache (15 minute TTL)
-                    let _ = cache
-                        .set(&cache_key, &response, Some(900))
-                        .await;
+                    let _ = cache.set(&cache_key, &response, Some(900)).await;
                     HttpResponse::Ok().json(response)
                 }
                 Ok(None) => HttpResponse::NotFound().json(serde_json::json!({

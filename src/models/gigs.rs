@@ -12,6 +12,7 @@ pub struct Model {
     pub description: String,
     #[sea_orm(column_type = "Double")]
     pub price: f64,
+    pub thumbnail_url: Option<String>,
     pub user_id: Uuid,
     pub created_at: DateTimeUtc,
 }
@@ -49,6 +50,7 @@ pub struct CreateGig {
     pub title: String,
     pub description: String,
     pub price: f64,
+    pub thumbnail_url: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -56,4 +58,5 @@ pub struct UpdateGig {
     pub title: Option<String>,
     pub description: Option<String>,
     pub price: Option<f64>,
+    pub thumbnail_url: Option<String>,
 }

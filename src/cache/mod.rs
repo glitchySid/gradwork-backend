@@ -1,5 +1,5 @@
-use redis::{aio::ConnectionManager, Client, RedisError};
-use serde::{de::DeserializeOwned, Serialize};
+use redis::{Client, RedisError, aio::ConnectionManager};
+use serde::{Serialize, de::DeserializeOwned};
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -108,37 +108,37 @@ impl RedisCache {
 pub mod keys {
     /// Generate key for gig listings
     pub fn gig_list(filters: &str) -> String {
-        format!("gigs:list:{}", filters)
+        format!("gigs:list:{filters}")
     }
 
     /// Generate key for single gig
     pub fn gig(id: &str) -> String {
-        format!("gig:{}", id)
+        format!("gig:{id}")
     }
 
     /// Generate key for user profile
     pub fn user(id: &str) -> String {
-        format!("user:{}", id)
+        format!("user:{id}")
     }
 
     /// Generate key for user gigs
     pub fn user_gigs(user_id: &str) -> String {
-        format!("user:{}:gigs", user_id)
+        format!("user:{user_id}:gigs")
     }
 
     /// Generate key for portfolio items
     pub fn portfolio(user_id: &str) -> String {
-        format!("portfolio:{}", user_id)
+        format!("portfolio:{user_id}")
     }
 
     /// Generate key for chat conversations
     pub fn conversations(user_id: &str) -> String {
-        format!("conversations:{}", user_id)
+        format!("conversations:{user_id}")
     }
 
     /// Generate key for messages in a conversation
     pub fn messages(conversation_id: &str) -> String {
-        format!("messages:{}", conversation_id)
+        format!("messages:{conversation_id}")
     }
 }
 
@@ -154,11 +154,11 @@ pub struct CacheConfig {
 impl Default for CacheConfig {
     fn default() -> Self {
         Self {
-            gig_list_ttl: Duration::from_secs(300),      // 5 minutes
-            gig_ttl: Duration::from_secs(600),           // 10 minutes
-            user_ttl: Duration::from_secs(900),          // 15 minutes
-            conversation_ttl: Duration::from_secs(300),  // 5 minutes
-            message_ttl: Duration::from_secs(60),        // 1 minute
+            gig_list_ttl: Duration::from_secs(300),     // 5 minutes
+            gig_ttl: Duration::from_secs(600),          // 10 minutes
+            user_ttl: Duration::from_secs(900),         // 15 minutes
+            conversation_ttl: Duration::from_secs(300), // 5 minutes
+            message_ttl: Duration::from_secs(60),       // 1 minute
         }
     }
 }
