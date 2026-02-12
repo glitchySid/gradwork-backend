@@ -75,7 +75,7 @@ pub async fn get_messages(
 
     let page = query.page.unwrap_or(1).max(1);
     let limit = query.limit.unwrap_or(50).min(100);
-    let cache_key = format!("messages:{}:{}:{}", contract_id, page, limit);
+    let cache_key = format!("messages:{contract_id}:{page}:{limit}");
 
     match cache.get::<Vec<MessageResponse>>(&cache_key).await {
         Ok(Some(cached)) => return HttpResponse::Ok().json(cached),

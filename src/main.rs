@@ -38,8 +38,8 @@ async fn main() -> std::io::Result<()> {
     let chat_server = web::Data::new(Arc::new(ChatServer::new()));
 
     let port = std::env::var("PORT").unwrap_or_else(|_| "8080".to_string());
-    let bind_addr = format!("0.0.0.0:{}", port);
-    println!("Server running at http://{}", bind_addr);
+    let bind_addr = format!("0.0.0.0:{port}");
+    println!("Server running at http://{bind_addr}");
 
     HttpServer::new(move || {
         let cors = Cors::default()

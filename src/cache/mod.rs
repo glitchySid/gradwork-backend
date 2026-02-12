@@ -108,37 +108,37 @@ impl RedisCache {
 pub mod keys {
     /// Generate key for gig listings
     pub fn gig_list(filters: &str) -> String {
-        format!("gigs:list:{}", filters)
+        format!("gigs:list:{filters}")
     }
 
     /// Generate key for single gig
     pub fn gig(id: &str) -> String {
-        format!("gig:{}", id)
+        format!("gig:{id}")
     }
 
     /// Generate key for user profile
     pub fn user(id: &str) -> String {
-        format!("user:{}", id)
+        format!("user:{id}")
     }
 
     /// Generate key for user gigs
     pub fn user_gigs(user_id: &str) -> String {
-        format!("user:{}:gigs", user_id)
+        format!("user:{user_id}:gigs")
     }
 
     /// Generate key for portfolio items
     pub fn portfolio(user_id: &str) -> String {
-        format!("portfolio:{}", user_id)
+        format!("portfolio:{user_id}")
     }
 
     /// Generate key for chat conversations
     pub fn conversations(user_id: &str) -> String {
-        format!("conversations:{}", user_id)
+        format!("conversations:{user_id}")
     }
 
     /// Generate key for messages in a conversation
     pub fn messages(conversation_id: &str) -> String {
-        format!("messages:{}", conversation_id)
+        format!("messages:{conversation_id}")
     }
 }
 

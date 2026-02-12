@@ -21,6 +21,12 @@ pub struct ChatServer {
     rooms: RwLock<HashMap<Uuid, Vec<ClientHandle>>>,
 }
 
+impl Default for ChatServer {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl ChatServer {
     pub fn new() -> Self {
         Self {

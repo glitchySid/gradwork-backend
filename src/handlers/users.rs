@@ -37,7 +37,7 @@ pub async fn get_user(
     // Try to get from cache first
     match cache.get::<serde_json::Value>(&cache_key).await {
         Ok(Some(cached)) => {
-            return HttpResponse::Ok().json(cached);
+            HttpResponse::Ok().json(cached)
         }
         Ok(None) => {
             // Cache miss - fetch from database

@@ -50,7 +50,7 @@ pub async fn get_portfolios_by_freelancer(
     let cache_key = keys::portfolio(&freelancer_id.to_string());
 
     match cache.get::<serde_json::Value>(&cache_key).await {
-        Ok(Some(cached)) => return HttpResponse::Ok().json(cached),
+        Ok(Some(cached)) => HttpResponse::Ok().json(cached),
         Ok(None) => {
             match portfolio_db::get_portfolios_by_freelancer(db.get_ref(), freelancer_id).await {
                 Ok(items) => {
