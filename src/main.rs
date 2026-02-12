@@ -3,6 +3,7 @@ use actix_cors::Cors;
 use actix_web::{App, HttpServer, web};
 use dotenv::dotenv;
 use gradwork_backend::auth::jwks::JwksCache;
+use gradwork_backend::cache::RedisCache;
 use gradwork_backend::chat::server::ChatServer;
 use gradwork_backend::create_pool;
 use gradwork_backend::handlers;
@@ -14,6 +15,14 @@ async fn main() -> std::io::Result<()> {
 
     let db = create_pool().await;
     let db_data = web::Data::new(db);
+
+    // Initialize Redis cache
+    let redis_url = std::env::var("REDIS_URL").expect("REDIS_URL must be set");
+    let redis_cache = RedisCache::new(&redis_url)
+        .await
+        .expect("Failed to connect to Redis");
+    let redis_data = web::Data::new(Arc::new(redis_cache));
+    println!("Connected to Redis");
 
     let supabase_url = std::env::var("SUPABASE_URL").expect("SUPABASE_URL must be set");
     let project_ref = supabase_url
@@ -45,6 +54,7 @@ async fn main() -> std::io::Result<()> {
         App::new()
             .wrap(cors)
             .app_data(db_data.clone())
+            .app_data(redis_data.clone())
             .app_data(jwks_cache.clone())
             .app_data(chat_server.clone())
             .service(web::scope("/api").configure(handlers::init_routes))

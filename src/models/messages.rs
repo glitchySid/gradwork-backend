@@ -87,7 +87,7 @@ pub struct MessageQuery {
 }
 
 /// Response for the conversations list endpoint.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ConversationSummary {
     pub contract_id: Uuid,
     pub other_user_id: Uuid,

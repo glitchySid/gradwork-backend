@@ -1,8 +1,10 @@
 use actix_web::{HttpResponse, Responder, web};
 use sea_orm::DatabaseConnection;
+use std::sync::Arc;
 use uuid::Uuid;
 
 use crate::auth::middleware::AuthenticatedUser;
+use crate::cache::{keys, RedisCache};
 use crate::db::portfolio as portfolio_db;
 use crate::models::portfolio::{CreatePortfolio, UpdatePortfolio};
 
@@ -41,14 +43,34 @@ pub async fn get_portfolio(
 pub async fn get_portfolios_by_freelancer(
     _user: AuthenticatedUser,
     db: web::Data<DatabaseConnection>,
+    cache: web::Data<Arc<RedisCache>>,
     path: web::Path<Uuid>,
 ) -> impl Responder {
     let freelancer_id = path.into_inner();
-    match portfolio_db::get_portfolios_by_freelancer(db.get_ref(), freelancer_id).await {
-        Ok(items) => HttpResponse::Ok().json(items),
-        Err(e) => HttpResponse::InternalServerError().json(serde_json::json!({
-            "error": format!("Failed to fetch portfolios: {e}"),
-        })),
+    let cache_key = keys::portfolio(&freelancer_id.to_string());
+
+    match cache.get::<serde_json::Value>(&cache_key).await {
+        Ok(Some(cached)) => return HttpResponse::Ok().json(cached),
+        Ok(None) => {
+            match portfolio_db::get_portfolios_by_freelancer(db.get_ref(), freelancer_id).await {
+                Ok(items) => {
+                    let _ = cache.set(&cache_key, &items, Some(600)).await;
+                    HttpResponse::Ok().json(items)
+                }
+                Err(e) => HttpResponse::InternalServerError().json(serde_json::json!({
+                    "error": format!("Failed to fetch portfolios: {e}"),
+                })),
+            }
+        }
+        Err(e) => {
+            eprintln!("Cache error: {e}");
+            match portfolio_db::get_portfolios_by_freelancer(db.get_ref(), freelancer_id).await {
+                Ok(items) => HttpResponse::Ok().json(items),
+                Err(e) => HttpResponse::InternalServerError().json(serde_json::json!({
+                    "error": format!("Failed to fetch portfolios: {e}"),
+                })),
+            }
+        }
     }
 }
 
@@ -56,11 +78,11 @@ pub async fn get_portfolios_by_freelancer(
 pub async fn create_portfolio(
     auth_user: AuthenticatedUser,
     db: web::Data<DatabaseConnection>,
+    cache: web::Data<Arc<RedisCache>>,
     body: web::Json<CreatePortfolio>,
 ) -> impl Responder {
     let input = body.into_inner();
 
-    // Only allow users to create portfolio items for themselves.
     if auth_user.0.id != input.freelancer_id {
         return HttpResponse::Forbidden().json(serde_json::json!({
             "error": "You can only create portfolio items for your own account",
@@ -68,7 +90,10 @@ pub async fn create_portfolio(
     }
 
     match portfolio_db::insert_portfolio(db.get_ref(), input).await {
-        Ok(item) => HttpResponse::Created().json(item),
+        Ok(item) => {
+            let _ = cache.delete(&keys::portfolio(&auth_user.0.id.to_string())).await;
+            HttpResponse::Created().json(item)
+        }
         Err(e) => HttpResponse::InternalServerError().json(serde_json::json!({
             "error": format!("Failed to create portfolio item: {e}"),
         })),
@@ -79,6 +104,7 @@ pub async fn create_portfolio(
 pub async fn update_portfolio(
     auth_user: AuthenticatedUser,
     db: web::Data<DatabaseConnection>,
+    cache: web::Data<Arc<RedisCache>>,
     path: web::Path<Uuid>,
     body: web::Json<UpdatePortfolio>,
 ) -> impl Responder {
@@ -105,7 +131,10 @@ pub async fn update_portfolio(
     }
 
     match portfolio_db::update_portfolio(db.get_ref(), id, body.into_inner()).await {
-        Ok(updated) => HttpResponse::Ok().json(updated),
+        Ok(updated) => {
+            let _ = cache.delete(&keys::portfolio(&auth_user.0.id.to_string())).await;
+            HttpResponse::Ok().json(updated)
+        }
         Err(e) => HttpResponse::InternalServerError().json(serde_json::json!({
             "error": format!("Failed to update portfolio item: {e}"),
         })),
@@ -116,6 +145,7 @@ pub async fn update_portfolio(
 pub async fn delete_portfolio(
     auth_user: AuthenticatedUser,
     db: web::Data<DatabaseConnection>,
+    cache: web::Data<Arc<RedisCache>>,
     path: web::Path<Uuid>,
 ) -> impl Responder {
     let id = path.into_inner();
@@ -143,6 +173,7 @@ pub async fn delete_portfolio(
     match portfolio_db::delete_portfolio(db.get_ref(), id).await {
         Ok(result) => {
             if result.rows_affected > 0 {
+                let _ = cache.delete(&keys::portfolio(&auth_user.0.id.to_string())).await;
                 HttpResponse::Ok().json(serde_json::json!({
                     "message": format!("Portfolio item {id} deleted"),
                 }))
