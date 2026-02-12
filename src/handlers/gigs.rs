@@ -1,8 +1,10 @@
 use actix_web::{HttpResponse, Responder, web};
 use sea_orm::DatabaseConnection;
+use std::sync::Arc;
 use uuid::Uuid;
 
 use crate::auth::middleware::AuthenticatedUser;
+use crate::cache::{keys, RedisCache};
 use crate::db::gigs as gig_db;
 use crate::models::gigs::{CreateGig, UpdateGig};
 
@@ -23,17 +25,48 @@ pub async fn get_gigs(
 pub async fn get_gig(
     _user: AuthenticatedUser,
     db: web::Data<DatabaseConnection>,
+    cache: web::Data<Arc<RedisCache>>,
     path: web::Path<Uuid>,
 ) -> impl Responder {
     let id = path.into_inner();
-    match gig_db::get_gig_by_id(db.get_ref(), id).await {
-        Ok(Some(gig)) => HttpResponse::Ok().json(gig),
-        Ok(None) => HttpResponse::NotFound().json(serde_json::json!({
-            "error": format!("Gig {id} not found"),
-        })),
-        Err(e) => HttpResponse::InternalServerError().json(serde_json::json!({
-            "error": format!("Database error: {e}"),
-        })),
+    let cache_key = keys::gig(&id.to_string());
+
+    // Try to get from cache first
+    match cache.get::<serde_json::Value>(&cache_key).await {
+        Ok(Some(cached)) => {
+            return HttpResponse::Ok().json(cached);
+        }
+        Ok(None) => {
+            // Cache miss - fetch from database
+            match gig_db::get_gig_by_id(db.get_ref(), id).await {
+                Ok(Some(gig)) => {
+                    // Store in cache (10 minute TTL)
+                    let _ = cache
+                        .set(&cache_key, &gig, Some(600))
+                        .await;
+                    HttpResponse::Ok().json(gig)
+                }
+                Ok(None) => HttpResponse::NotFound().json(serde_json::json!({
+                    "error": format!("Gig {id} not found"),
+                })),
+                Err(e) => HttpResponse::InternalServerError().json(serde_json::json!({
+                    "error": format!("Database error: {e}"),
+                })),
+            }
+        }
+        Err(e) => {
+            // Cache error - fallback to database
+            eprintln!("Cache error: {e}");
+            match gig_db::get_gig_by_id(db.get_ref(), id).await {
+                Ok(Some(gig)) => HttpResponse::Ok().json(gig),
+                Ok(None) => HttpResponse::NotFound().json(serde_json::json!({
+                    "error": format!("Gig {id} not found"),
+                })),
+                Err(e) => HttpResponse::InternalServerError().json(serde_json::json!({
+                    "error": format!("Database error: {e}"),
+                })),
+            }
+        }
     }
 }
 
@@ -71,11 +104,17 @@ pub async fn delete_all_gig_by_user_id(
 pub async fn create_gig(
     user: AuthenticatedUser,
     db: web::Data<DatabaseConnection>,
+    cache: web::Data<Arc<RedisCache>>,
     body: web::Json<CreateGig>,
 ) -> impl Responder {
-    let user_id = user.0.id; // really don't know is this will work
+    let user_id = user.0.id;
     match gig_db::insert_gig(db.get_ref(), body.into_inner(), user_id).await {
-        Ok(gig) => HttpResponse::Created().json(gig),
+        Ok(gig) => {
+            // Invalidate user's gigs cache and all gigs list
+            let _ = cache.delete(&keys::user_gigs(&user_id.to_string())).await;
+            let _ = cache.delete_pattern("gigs:list:*").await;
+            HttpResponse::Created().json(gig)
+        }
         Err(e) => HttpResponse::InternalServerError().json(serde_json::json!({
             "error": format!("Failed to create gig: {e}"),
         })),
@@ -86,12 +125,18 @@ pub async fn create_gig(
 pub async fn update_gig(
     _user: AuthenticatedUser,
     db: web::Data<DatabaseConnection>,
+    cache: web::Data<Arc<RedisCache>>,
     path: web::Path<Uuid>,
     body: web::Json<UpdateGig>,
 ) -> impl Responder {
     let id = path.into_inner();
     match gig_db::update_gig(db.get_ref(), id, body.into_inner()).await {
-        Ok(updated) => HttpResponse::Ok().json(updated),
+        Ok(updated) => {
+            // Invalidate specific gig cache and related caches
+            let _ = cache.delete(&keys::gig(&id.to_string())).await;
+            let _ = cache.delete_pattern("gigs:list:*").await;
+            HttpResponse::Ok().json(updated)
+        }
         Err(e) => {
             let mut status = if e.to_string().contains("not found") {
                 HttpResponse::NotFound()
@@ -109,12 +154,16 @@ pub async fn update_gig(
 pub async fn delete_gig(
     _user: AuthenticatedUser,
     db: web::Data<DatabaseConnection>,
+    cache: web::Data<Arc<RedisCache>>,
     path: web::Path<Uuid>,
 ) -> impl Responder {
     let id = path.into_inner();
     match gig_db::delete_gig(db.get_ref(), id).await {
         Ok(result) => {
             if result.rows_affected > 0 {
+                // Invalidate specific gig cache and related caches
+                let _ = cache.delete(&keys::gig(&id.to_string())).await;
+                let _ = cache.delete_pattern("gigs:list:*").await;
                 HttpResponse::Ok().json(serde_json::json!({
                     "message": format!("Gig {id} deleted"),
                 }))

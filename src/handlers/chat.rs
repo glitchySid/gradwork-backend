@@ -1,8 +1,10 @@
 use actix_web::{HttpResponse, Responder, web};
 use sea_orm::DatabaseConnection;
+use std::sync::Arc;
 use uuid::Uuid;
 
 use crate::auth::middleware::AuthenticatedUser;
+use crate::cache::{keys, RedisCache};
 use crate::db::contracts as contract_db;
 use crate::db::gigs as gig_db;
 use crate::db::messages as message_db;
@@ -60,6 +62,7 @@ async fn authorize_contract_party(
 pub async fn get_messages(
     user: AuthenticatedUser,
     db: web::Data<DatabaseConnection>,
+    cache: web::Data<Arc<RedisCache>>,
     path: web::Path<Uuid>,
     query: web::Query<MessageQuery>,
 ) -> impl Responder {
@@ -72,10 +75,18 @@ pub async fn get_messages(
 
     let page = query.page.unwrap_or(1).max(1);
     let limit = query.limit.unwrap_or(50).min(100);
+    let cache_key = format!("messages:{}:{}:{}", contract_id, page, limit);
+
+    match cache.get::<Vec<MessageResponse>>(&cache_key).await {
+        Ok(Some(cached)) => return HttpResponse::Ok().json(cached),
+        Ok(None) => {}
+        Err(e) => eprintln!("Cache error: {e}"),
+    }
 
     match message_db::get_messages_by_contract(db.get_ref(), contract_id, page, limit).await {
         Ok(messages) => {
             let response: Vec<MessageResponse> = messages.into_iter().map(|m| m.into()).collect();
+            let _ = cache.set(&cache_key, &response, Some(60)).await;
             HttpResponse::Ok().json(response)
         }
         Err(e) => HttpResponse::InternalServerError().json(serde_json::json!({
@@ -90,13 +101,15 @@ pub async fn get_messages(
 pub async fn mark_message_read(
     user: AuthenticatedUser,
     db: web::Data<DatabaseConnection>,
+    cache: web::Data<Arc<RedisCache>>,
     path: web::Path<Uuid>,
 ) -> impl Responder {
     let message_id = path.into_inner();
-    let _user_id = user.0.id;
+    let user_id = user.0.id;
 
     match message_db::mark_message_as_read(db.get_ref(), message_id).await {
         Ok(msg) => {
+            let _ = cache.delete(&keys::conversations(&user_id.to_string())).await;
             let response: MessageResponse = msg.into();
             HttpResponse::Ok().json(response)
         }
@@ -113,8 +126,16 @@ pub async fn mark_message_read(
 pub async fn get_conversations(
     user: AuthenticatedUser,
     db: web::Data<DatabaseConnection>,
+    cache: web::Data<Arc<RedisCache>>,
 ) -> impl Responder {
     let user_id = user.0.id;
+    let cache_key = keys::conversations(&user_id.to_string());
+
+    match cache.get::<Vec<ConversationSummary>>(&cache_key).await {
+        Ok(Some(cached)) => return HttpResponse::Ok().json(cached),
+        Ok(None) => {}
+        Err(e) => eprintln!("Cache error: {e}"),
+    }
 
     // Get all contracts where the user is the client.
     let as_client = match contract_db::get_contracts_by_user_id(db.get_ref(), user_id).await {
@@ -205,13 +226,12 @@ pub async fn get_conversations(
         });
     }
 
-    // Sort by last_message_at descending (most recent first), putting contracts
-    // with no messages at the end.
     summaries.sort_by(|a, b| {
         let a_time = a.last_message_at.unwrap_or(chrono::DateTime::UNIX_EPOCH);
         let b_time = b.last_message_at.unwrap_or(chrono::DateTime::UNIX_EPOCH);
         b_time.cmp(&a_time)
     });
 
+    let _ = cache.set(&cache_key, &summaries, Some(300)).await;
     HttpResponse::Ok().json(summaries)
 }

@@ -1,8 +1,10 @@
 use actix_web::{HttpResponse, Responder, web};
 use sea_orm::DatabaseConnection;
+use std::sync::Arc;
 use uuid::Uuid;
 
 use crate::auth::middleware::AuthenticatedUser;
+use crate::cache::{keys, RedisCache};
 use crate::db::users as user_db;
 use crate::models::users::{UpdateUser, UserResponse};
 
@@ -26,17 +28,49 @@ pub async fn get_users(
 pub async fn get_user(
     _user: AuthenticatedUser,
     db: web::Data<DatabaseConnection>,
+    cache: web::Data<Arc<RedisCache>>,
     path: web::Path<Uuid>,
 ) -> impl Responder {
     let id = path.into_inner();
-    match user_db::get_user_by_id(db.get_ref(), id).await {
-        Ok(Some(user)) => HttpResponse::Ok().json(UserResponse::from(user)),
-        Ok(None) => HttpResponse::NotFound().json(serde_json::json!({
-            "error": format!("User {id} not found"),
-        })),
-        Err(e) => HttpResponse::InternalServerError().json(serde_json::json!({
-            "error": format!("Database error: {e}"),
-        })),
+    let cache_key = keys::user(&id.to_string());
+
+    // Try to get from cache first
+    match cache.get::<serde_json::Value>(&cache_key).await {
+        Ok(Some(cached)) => {
+            return HttpResponse::Ok().json(cached);
+        }
+        Ok(None) => {
+            // Cache miss - fetch from database
+            match user_db::get_user_by_id(db.get_ref(), id).await {
+                Ok(Some(user)) => {
+                    let response = UserResponse::from(user);
+                    // Store in cache (15 minute TTL)
+                    let _ = cache
+                        .set(&cache_key, &response, Some(900))
+                        .await;
+                    HttpResponse::Ok().json(response)
+                }
+                Ok(None) => HttpResponse::NotFound().json(serde_json::json!({
+                    "error": format!("User {id} not found"),
+                })),
+                Err(e) => HttpResponse::InternalServerError().json(serde_json::json!({
+                    "error": format!("Database error: {e}"),
+                })),
+            }
+        }
+        Err(e) => {
+            // Cache error - fallback to database
+            eprintln!("Cache error: {e}");
+            match user_db::get_user_by_id(db.get_ref(), id).await {
+                Ok(Some(user)) => HttpResponse::Ok().json(UserResponse::from(user)),
+                Ok(None) => HttpResponse::NotFound().json(serde_json::json!({
+                    "error": format!("User {id} not found"),
+                })),
+                Err(e) => HttpResponse::InternalServerError().json(serde_json::json!({
+                    "error": format!("Database error: {e}"),
+                })),
+            }
+        }
     }
 }
 
@@ -44,6 +78,7 @@ pub async fn get_user(
 pub async fn update_user(
     auth_user: AuthenticatedUser,
     db: web::Data<DatabaseConnection>,
+    cache: web::Data<Arc<RedisCache>>,
     path: web::Path<Uuid>,
     body: web::Json<UpdateUser>,
 ) -> impl Responder {
@@ -57,7 +92,11 @@ pub async fn update_user(
     }
 
     match user_db::update_user(db.get_ref(), id, body.into_inner()).await {
-        Ok(updated) => HttpResponse::Ok().json(UserResponse::from(updated)),
+        Ok(updated) => {
+            // Invalidate user cache and related caches
+            let _ = cache.delete(&keys::user(&id.to_string())).await;
+            HttpResponse::Ok().json(UserResponse::from(updated))
+        }
         Err(e) => HttpResponse::InternalServerError().json(serde_json::json!({
             "error": format!("Failed to update user: {e}"),
         })),
@@ -68,6 +107,7 @@ pub async fn update_user(
 pub async fn delete_user(
     auth_user: AuthenticatedUser,
     db: web::Data<DatabaseConnection>,
+    cache: web::Data<Arc<RedisCache>>,
     path: web::Path<Uuid>,
 ) -> impl Responder {
     let id = path.into_inner();
@@ -82,6 +122,10 @@ pub async fn delete_user(
     match user_db::delete_user(db.get_ref(), id).await {
         Ok(result) => {
             if result.rows_affected > 0 {
+                // Invalidate user cache and user's related caches
+                let _ = cache.delete(&keys::user(&id.to_string())).await;
+                let _ = cache.delete(&keys::user_gigs(&id.to_string())).await;
+                let _ = cache.delete(&keys::portfolio(&id.to_string())).await;
                 HttpResponse::Ok().json(serde_json::json!({
                     "message": format!("User {id} deleted"),
                 }))
