@@ -12,12 +12,32 @@ use crate::models::gigs::{CreateGig, UpdateGig};
 pub async fn get_gigs(
     // _user: AuthenticatedUser,
     db: web::Data<DatabaseConnection>,
+    cache: web::Data<Arc<RedisCache>>,
 ) -> impl Responder {
-    match gig_db::get_all_gigs(db.get_ref()).await {
-        Ok(gigs) => HttpResponse::Ok().json(gigs),
-        Err(e) => HttpResponse::InternalServerError().json(serde_json::json!({
-            "error": format!("Failed to fetch gigs: {e}"),
-        })),
+    let cache_key = keys::gig_list("all");
+
+    match cache.get::<serde_json::Value>(&cache_key).await {
+        Ok(Some(cached)) => HttpResponse::Ok().json(cached),
+        Ok(None) => {
+            match gig_db::get_all_gigs(db.get_ref()).await {
+                Ok(gigs) => {
+                    let _ = cache.set(&cache_key, &gigs, Some(300)).await;
+                    HttpResponse::Ok().json(gigs)
+                }
+                Err(e) => HttpResponse::InternalServerError().json(serde_json::json!({
+                    "error": format!("Failed to fetch gigs: {e}"),
+                })),
+            }
+        }
+        Err(e) => {
+            eprintln!("Cache error: {e}");
+            match gig_db::get_all_gigs(db.get_ref()).await {
+                Ok(gigs) => HttpResponse::Ok().json(gigs),
+                Err(e) => HttpResponse::InternalServerError().json(serde_json::json!({
+                    "error": format!("Failed to fetch gigs: {e}"),
+                })),
+            }
+        }
     }
 }
 
@@ -72,14 +92,34 @@ pub async fn get_gig(
 pub async fn get_gigs_by_user_id(
     _user: AuthenticatedUser,
     db: web::Data<DatabaseConnection>,
+    cache: web::Data<Arc<RedisCache>>,
     path: web::Path<Uuid>,
 ) -> impl Responder {
     let user_id = path.into_inner();
-    match gig_db::get_gigs_by_user_id(db.get_ref(), user_id).await {
-        Ok(gigs) => HttpResponse::Ok().json(gigs),
-        Err(e) => HttpResponse::InternalServerError().json(serde_json::json!({
-            "error": format!("Database error: {e}"),
-        })),
+    let cache_key = keys::user_gigs(&user_id.to_string());
+
+    match cache.get::<serde_json::Value>(&cache_key).await {
+        Ok(Some(cached)) => HttpResponse::Ok().json(cached),
+        Ok(None) => {
+            match gig_db::get_gigs_by_user_id(db.get_ref(), user_id).await {
+                Ok(gigs) => {
+                    let _ = cache.set(&cache_key, &gigs, Some(300)).await;
+                    HttpResponse::Ok().json(gigs)
+                }
+                Err(e) => HttpResponse::InternalServerError().json(serde_json::json!({
+                    "error": format!("Database error: {e}"),
+                })),
+            }
+        }
+        Err(e) => {
+            eprintln!("Cache error: {e}");
+            match gig_db::get_gigs_by_user_id(db.get_ref(), user_id).await {
+                Ok(gigs) => HttpResponse::Ok().json(gigs),
+                Err(e) => HttpResponse::InternalServerError().json(serde_json::json!({
+                    "error": format!("Database error: {e}"),
+                })),
+            }
+        }
     }
 }
 
