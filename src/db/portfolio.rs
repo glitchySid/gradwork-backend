@@ -65,7 +65,7 @@ pub async fn update_portfolio(
         active.description = Set(description);
     }
     if let Some(thumbnail_url) = input.thumbnail_url {
-        active.thumbnail_url = Set(thumbnail_url);
+        active.thumbnail_url = Set(Some(thumbnail_url));
     }
     if let Some(price) = input.price {
         active.price = Set(price);
