@@ -10,6 +10,7 @@ mod m20250210_000001_add_unique_gig_user_to_contracts;
 mod m20250210_000002_create_messages_table;
 mod m20250212_000003_add_thumbnail_url_to_gigs;
 mod m20250214_000001_add_indexes;
+mod m20250216_000001_add_thumbnail_url_to_portfolios;
 
 pub struct Migrator;
 
@@ -27,6 +28,8 @@ impl MigratorTrait for Migrator {
             Box::new(m20250210_000002_create_messages_table::Migration),
             Box::new(m20250212_000003_add_thumbnail_url_to_gigs::Migration),
             Box::new(m20250214_000001_add_indexes::Migration),
+            Box::new(m20250216_000001_add_thumbnail_url_to_portfolios::Migration),
+
         ]
     }
 }

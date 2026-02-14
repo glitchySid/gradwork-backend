@@ -1,5 +1,4 @@
 use actix_cors::Cors;
-// use actix_files::Files;
 use actix_web::{App, HttpServer, web};
 use dotenv::dotenv;
 use gradwork_backend::auth::jwks::JwksCache;
@@ -64,7 +63,6 @@ async fn main() -> std::io::Result<()> {
             .app_data(jwks_cache.clone())
             .app_data(chat_server.clone())
             .service(web::scope("/api").configure(handlers::init_routes))
-        // .service(Files::new("/", "./frontend").index_file("index.html"))
     })
     .bind(&bind_addr)?
     .run()

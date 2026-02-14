@@ -13,6 +13,7 @@ pub async fn insert_portfolio(
         title: Set(input.title),
         description: Set(input.description),
         freelancer_id: Set(input.freelancer_id),
+        thumbnail_url: Set(input.thumbnail_url),
         price: Set(input.price),
         created_at: Set(chrono::Utc::now()),
     };
@@ -62,6 +63,9 @@ pub async fn update_portfolio(
     }
     if let Some(description) = input.description {
         active.description = Set(description);
+    }
+    if let Some(thumbnail_url) = input.thumbnail_url {
+        active.thumbnail_url = Set(thumbnail_url);
     }
     if let Some(price) = input.price {
         active.price = Set(price);

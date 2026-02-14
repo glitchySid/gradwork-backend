@@ -11,6 +11,7 @@ pub struct Model {
     #[sea_orm(column_type = "Text")]
     pub description: String,
     pub freelancer_id: Uuid,
+    pub thumbnail_url: Option<String>,
     #[sea_orm(column_type = "Double")]
     pub price: f64,
     pub created_at: DateTimeUtc,
@@ -41,6 +42,7 @@ pub struct CreatePortfolio {
     pub title: String,
     pub description: String,
     pub freelancer_id: Uuid,
+    pub thumbnail_url: Option<String>,
     pub price: f64,
 }
 
@@ -48,5 +50,6 @@ pub struct CreatePortfolio {
 pub struct UpdatePortfolio {
     pub title: Option<String>,
     pub description: Option<String>,
+    pub thumbnail_url: Option<String>,
     pub price: Option<f64>,
 }
