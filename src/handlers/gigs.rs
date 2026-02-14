@@ -2,24 +2,31 @@ use actix_web::{HttpResponse, Responder, web};
 use sea_orm::DatabaseConnection;
 use std::sync::Arc;
 use uuid::Uuid;
+use tracing;
 
 use crate::auth::middleware::AuthenticatedUser;
+use crate::auth::authorization::verify_gig_owner;
 use crate::cache::{RedisCache, keys};
 use crate::db::gigs as gig_db;
 use crate::models::gigs::{CreateGig, UpdateGig};
+use crate::models::PaginationQuery;
 
-/// GET /api/gigs — list all gigs (requires authentication).
+/// GET /api/gigs — list all gigs with pagination (requires authentication).
+/// Query params: ?page=1&limit=20
 pub async fn get_gigs(
     // _user: AuthenticatedUser,
     db: web::Data<DatabaseConnection>,
     cache: web::Data<Arc<RedisCache>>,
+    query: web::Query<PaginationQuery>,
 ) -> impl Responder {
-    let cache_key = keys::gig_list("all");
+    let page = query.page();
+    let limit = query.limit();
+    let cache_key = keys::gig_list(&format!("p{page}:l{limit}"));
 
     match cache.get::<serde_json::Value>(&cache_key).await {
         Ok(Some(cached)) => HttpResponse::Ok().json(cached),
         Ok(None) => {
-            match gig_db::get_all_gigs(db.get_ref()).await {
+            match gig_db::get_gigs_paginated(db.get_ref(), page, limit).await {
                 Ok(gigs) => {
                     let _ = cache.set(&cache_key, &gigs, Some(300)).await;
                     HttpResponse::Ok().json(gigs)
@@ -30,8 +37,8 @@ pub async fn get_gigs(
             }
         }
         Err(e) => {
-            eprintln!("Cache error: {e}");
-            match gig_db::get_all_gigs(db.get_ref()).await {
+            tracing::warn!("Cache error: {}", e);
+            match gig_db::get_gigs_paginated(db.get_ref(), page, limit).await {
                 Ok(gigs) => HttpResponse::Ok().json(gigs),
                 Err(e) => HttpResponse::InternalServerError().json(serde_json::json!({
                     "error": format!("Failed to fetch gigs: {e}"),
@@ -74,7 +81,7 @@ pub async fn get_gig(
         }
         Err(e) => {
             // Cache error - fallback to database
-            eprintln!("Cache error: {e}");
+            tracing::warn!("Cache error: {}", e);
             match gig_db::get_gig_by_id(db.get_ref(), id).await {
                 Ok(Some(gig)) => HttpResponse::Ok().json(gig),
                 Ok(None) => HttpResponse::NotFound().json(serde_json::json!({
@@ -112,7 +119,7 @@ pub async fn get_gigs_by_user_id(
             }
         }
         Err(e) => {
-            eprintln!("Cache error: {e}");
+            tracing::warn!("Cache error: {}", e);
             match gig_db::get_gigs_by_user_id(db.get_ref(), user_id).await {
                 Ok(gigs) => HttpResponse::Ok().json(gigs),
                 Err(e) => HttpResponse::InternalServerError().json(serde_json::json!({
@@ -161,13 +168,20 @@ pub async fn create_gig(
 
 /// PUT /api/gigs/{id} — update a gig (requires authentication).
 pub async fn update_gig(
-    _user: AuthenticatedUser,
+    user: AuthenticatedUser,
     db: web::Data<DatabaseConnection>,
     cache: web::Data<Arc<RedisCache>>,
     path: web::Path<Uuid>,
     body: web::Json<UpdateGig>,
 ) -> impl Responder {
     let id = path.into_inner();
+    let user_id = user.0.id;
+
+    // Verify the user owns the gig
+    if let Err(resp) = verify_gig_owner(db.get_ref(), id, user_id).await {
+        return resp;
+    }
+
     match gig_db::update_gig(db.get_ref(), id, body.into_inner()).await {
         Ok(updated) => {
             // Invalidate specific gig cache and related caches

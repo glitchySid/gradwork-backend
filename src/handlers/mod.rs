@@ -41,7 +41,7 @@ pub fn init_routes(cfg: &mut web::ServiceConfig) {
             .route(web::get().to(portfolio::get_portfolios_by_freelancer)),
     );
 
-    // ── Gig routes (all protected — require valid JWT) ──
+    // ── Gig routes (all protected except /gigs — require valid JWT) ──
     cfg.service(
         web::scope("/gigs")
             .route("", web::get().to(gigs::get_gigs))

@@ -17,9 +17,10 @@ impl RedisCache {
 
     /// Get a value from cache
     pub async fn get<T: DeserializeOwned>(&self, key: &str) -> redis::RedisResult<Option<T>> {
+        let mut conn = self.connection.clone();
         let value: Option<String> = redis::cmd("GET")
             .arg(key)
-            .query_async(&mut self.connection.clone())
+            .query_async(&mut conn)
             .await?;
 
         match value {
@@ -59,28 +60,49 @@ impl RedisCache {
             cmd.arg("EX").arg(ttl);
         }
 
-        cmd.query_async(&mut self.connection.clone()).await
+        let mut conn = self.connection.clone();
+        cmd.query_async(&mut conn).await
     }
 
     /// Delete a key from cache
     pub async fn delete(&self, key: &str) -> redis::RedisResult<()> {
+        let mut conn = self.connection.clone();
         redis::cmd("DEL")
             .arg(key)
-            .query_async(&mut self.connection.clone())
+            .query_async(&mut conn)
             .await
     }
 
-    /// Delete multiple keys matching a pattern
+    /// Delete multiple keys matching a pattern using SCAN (production-safe)
     pub async fn delete_pattern(&self, pattern: &str) -> redis::RedisResult<()> {
-        let keys: Vec<String> = redis::cmd("KEYS")
-            .arg(pattern)
-            .query_async(&mut self.connection.clone())
-            .await?;
+        let mut conn = self.connection.clone();
+        
+        let mut cursor = 0u64;
+        let mut keys_to_delete = Vec::new();
+        
+        loop {
+            let (next_cursor, batch): (u64, Vec<String>) = redis::cmd("SCAN")
+                .arg(cursor)
+                .arg("MATCH")
+                .arg(pattern)
+                .arg("COUNT")
+                .arg(100)
+                .query_async(&mut conn)
+                .await?;
+            
+            keys_to_delete.extend(batch);
+            cursor = next_cursor;
+            
+            if cursor == 0 {
+                break;
+            }
+        }
 
-        if !keys.is_empty() {
+        if !keys_to_delete.is_empty() {
+            let mut conn = self.connection.clone();
             let _: () = redis::cmd("DEL")
-                .arg(&keys)
-                .query_async(&mut self.connection.clone())
+                .arg(&keys_to_delete)
+                .query_async(&mut conn)
                 .await?;
         }
 
@@ -89,17 +111,19 @@ impl RedisCache {
 
     /// Check if key exists
     pub async fn exists(&self, key: &str) -> redis::RedisResult<bool> {
+        let mut conn = self.connection.clone();
         redis::cmd("EXISTS")
             .arg(key)
-            .query_async(&mut self.connection.clone())
+            .query_async(&mut conn)
             .await
     }
 
     /// Get remaining TTL for a key in seconds
     pub async fn ttl(&self, key: &str) -> redis::RedisResult<i64> {
+        let mut conn = self.connection.clone();
         redis::cmd("TTL")
             .arg(key)
-            .query_async(&mut self.connection.clone())
+            .query_async(&mut conn)
             .await
     }
 }

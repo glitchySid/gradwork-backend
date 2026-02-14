@@ -2,6 +2,7 @@ use actix_web::{HttpResponse, Responder, web};
 use sea_orm::DatabaseConnection;
 use std::sync::Arc;
 use uuid::Uuid;
+use tracing;
 
 use crate::auth::middleware::AuthenticatedUser;
 use crate::cache::{RedisCache, keys};
@@ -63,7 +64,7 @@ pub async fn get_portfolios_by_freelancer(
             }
         }
         Err(e) => {
-            eprintln!("Cache error: {e}");
+            tracing::warn!("Cache error: {}", e);
             match portfolio_db::get_portfolios_by_freelancer(db.get_ref(), freelancer_id).await {
                 Ok(items) => HttpResponse::Ok().json(items),
                 Err(e) => HttpResponse::InternalServerError().json(serde_json::json!({

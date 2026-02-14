@@ -2,18 +2,25 @@ use actix_web::{HttpResponse, Responder, web};
 use sea_orm::DatabaseConnection;
 use std::sync::Arc;
 use uuid::Uuid;
+use tracing;
 
 use crate::auth::middleware::AuthenticatedUser;
 use crate::cache::{RedisCache, keys};
 use crate::db::users as user_db;
 use crate::models::users::{UpdateUser, UserResponse};
+use crate::models::PaginationQuery;
 
-/// GET /api/users — list all users (requires authentication).
+/// GET /api/users — list all users with pagination (requires authentication).
+/// Query params: ?page=1&limit=20
 pub async fn get_users(
     _user: AuthenticatedUser, // ensures caller is authenticated
     db: web::Data<DatabaseConnection>,
+    query: web::Query<PaginationQuery>,
 ) -> impl Responder {
-    match user_db::get_all_users(db.get_ref()).await {
+    let page = query.page();
+    let limit = query.limit();
+
+    match user_db::get_users_paginated(db.get_ref(), page, limit).await {
         Ok(users) => {
             let response: Vec<UserResponse> = users.into_iter().map(UserResponse::from).collect();
             HttpResponse::Ok().json(response)
@@ -58,7 +65,7 @@ pub async fn get_user(
         }
         Err(e) => {
             // Cache error - fallback to database
-            eprintln!("Cache error: {e}");
+            tracing::warn!("Cache error: {}", e);
             match user_db::get_user_by_id(db.get_ref(), id).await {
                 Ok(Some(user)) => HttpResponse::Ok().json(UserResponse::from(user)),
                 Ok(None) => HttpResponse::NotFound().json(serde_json::json!({

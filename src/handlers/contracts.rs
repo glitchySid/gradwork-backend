@@ -102,17 +102,16 @@ pub async fn get_contracts(
         }
     };
 
-    let mut as_freelancer: Vec<crate::models::contracts::Model> = Vec::new();
-    for gig in &user_gigs {
-        match contract_db::get_contracts_by_gig_id(db.get_ref(), gig.id).await {
-            Ok(contracts) => as_freelancer.extend(contracts),
-            Err(e) => {
-                return HttpResponse::InternalServerError().json(serde_json::json!({
-                    "error": format!("Database error: {e}"),
-                }));
-            }
+    // Batch fetch all contracts for user's gigs in a single query (N+1 fix)
+    let gig_ids: Vec<Uuid> = user_gigs.iter().map(|g| g.id).collect();
+    let as_freelancer = match contract_db::get_contracts_by_gig_ids(db.get_ref(), gig_ids).await {
+        Ok(contracts) => contracts,
+        Err(e) => {
+            return HttpResponse::InternalServerError().json(serde_json::json!({
+                "error": format!("Database error: {e}"),
+            }));
         }
-    }
+    };
 
     // Merge and deduplicate (a user could be both client and gig owner in theory,
     // though we prevent self-contracts).

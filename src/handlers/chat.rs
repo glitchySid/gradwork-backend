@@ -2,7 +2,9 @@ use actix_web::{HttpResponse, Responder, web};
 use sea_orm::DatabaseConnection;
 use std::sync::Arc;
 use uuid::Uuid;
+use tracing;
 
+use crate::auth::authorization::verify_contract_party;
 use crate::auth::middleware::AuthenticatedUser;
 use crate::cache::{RedisCache, keys};
 use crate::db::contracts as contract_db;
@@ -10,50 +12,6 @@ use crate::db::gigs as gig_db;
 use crate::db::messages as message_db;
 use crate::models::contracts::Status;
 use crate::models::messages::{ConversationSummary, MessageQuery, MessageResponse};
-
-/// Helper: verify the authenticated user is a party to the given contract
-/// and that the contract is Accepted. Returns the contract model on success.
-async fn authorize_contract_party(
-    db: &DatabaseConnection,
-    contract_id: Uuid,
-    user_id: Uuid,
-) -> Result<crate::models::contracts::Model, HttpResponse> {
-    let contract = contract_db::get_contract_by_id(db, contract_id)
-        .await
-        .map_err(|e| {
-            HttpResponse::InternalServerError().json(serde_json::json!({
-                "error": format!("Database error: {e}"),
-            }))
-        })?
-        .ok_or_else(|| {
-            HttpResponse::NotFound().json(serde_json::json!({
-                "error": format!("Contract {contract_id} not found"),
-            }))
-        })?;
-
-    if contract.status != Status::Accepted {
-        return Err(HttpResponse::Forbidden().json(serde_json::json!({
-            "error": "Chat is only available for accepted contracts",
-        })));
-    }
-
-    // Check if user is the client on the contract.
-    let is_client = contract.user_id == user_id;
-
-    // Check if user is the freelancer (gig owner).
-    let is_freelancer = match gig_db::get_gig_by_id(db, contract.gig_id).await {
-        Ok(Some(gig)) => gig.user_id == user_id,
-        _ => false,
-    };
-
-    if !is_client && !is_freelancer {
-        return Err(HttpResponse::Forbidden().json(serde_json::json!({
-            "error": "You are not a party to this contract",
-        })));
-    }
-
-    Ok(contract)
-}
 
 /// GET /api/chat/{contract_id}/messages?page=1&limit=50
 ///
@@ -69,7 +27,7 @@ pub async fn get_messages(
     let contract_id = path.into_inner();
     let user_id = user.0.id;
 
-    if let Err(resp) = authorize_contract_party(db.get_ref(), contract_id, user_id).await {
+    if let Err(resp) = verify_contract_party(db.get_ref(), contract_id, user_id).await {
         return resp;
     }
 
@@ -80,7 +38,7 @@ pub async fn get_messages(
     match cache.get::<Vec<MessageResponse>>(&cache_key).await {
         Ok(Some(cached)) => return HttpResponse::Ok().json(cached),
         Ok(None) => {}
-        Err(e) => eprintln!("Cache error: {e}"),
+        Err(e) => tracing::warn!("Cache error: {}", e),
     }
 
     match message_db::get_messages_by_contract(db.get_ref(), contract_id, page, limit).await {
@@ -136,7 +94,7 @@ pub async fn get_conversations(
     match cache.get::<Vec<ConversationSummary>>(&cache_key).await {
         Ok(Some(cached)) => return HttpResponse::Ok().json(cached),
         Ok(None) => {}
-        Err(e) => eprintln!("Cache error: {e}"),
+        Err(e) => tracing::warn!("Cache error: {}", e),
     }
 
     // Get all contracts where the user is the client.
@@ -159,21 +117,20 @@ pub async fn get_conversations(
         }
     };
 
-    let mut as_freelancer: Vec<crate::models::contracts::Model> = Vec::new();
-    for gig in &user_gigs {
-        match contract_db::get_contracts_by_gig_id(db.get_ref(), gig.id).await {
-            Ok(contracts) => as_freelancer.extend(contracts),
-            Err(e) => {
-                return HttpResponse::InternalServerError().json(serde_json::json!({
-                    "error": format!("Database error: {e}"),
-                }));
-            }
+    // Batch fetch all contracts for user's gigs in a single query (N+1 fix)
+    let gig_ids: Vec<Uuid> = user_gigs.iter().map(|g| g.id).collect();
+    let freelancer_contracts = match contract_db::get_contracts_by_gig_ids(db.get_ref(), gig_ids).await {
+        Ok(c) => c,
+        Err(e) => {
+            return HttpResponse::InternalServerError().json(serde_json::json!({
+                "error": format!("Database error: {e}"),
+            }));
         }
-    }
+    };
 
     // Merge and deduplicate, keeping only Accepted contracts.
     let mut all_contracts = as_client;
-    for contract in as_freelancer {
+    for contract in freelancer_contracts {
         if !all_contracts.iter().any(|c| c.id == contract.id) {
             all_contracts.push(contract);
         }

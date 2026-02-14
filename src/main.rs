@@ -8,10 +8,15 @@ use gradwork_backend::chat::server::ChatServer;
 use gradwork_backend::create_pool;
 use gradwork_backend::handlers;
 use std::sync::Arc;
+use tracing_subscriber::EnvFilter;
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
     dotenv().ok();
+
+    tracing_subscriber::fmt()
+        .with_env_filter(EnvFilter::from_default_env().add_directive(tracing::Level::INFO.into()))
+        .init();
 
     let db = create_pool().await;
     let db_data = web::Data::new(db);
@@ -22,7 +27,7 @@ async fn main() -> std::io::Result<()> {
         .await
         .expect("Failed to connect to Redis");
     let redis_data = web::Data::new(Arc::new(redis_cache));
-    println!("Connected to Redis");
+    tracing::info!("Connected to Redis");
 
     let supabase_url = std::env::var("SUPABASE_URL").expect("SUPABASE_URL must be set");
     let project_ref = supabase_url
@@ -39,7 +44,7 @@ async fn main() -> std::io::Result<()> {
 
     let port = std::env::var("PORT").unwrap_or_else(|_| "8080".to_string());
     let bind_addr = format!("0.0.0.0:{port}");
-    println!("Server running at http://{bind_addr}");
+    tracing::info!("Server running at http://{bind_addr}");
 
     HttpServer::new(move || {
         let cors = Cors::default()

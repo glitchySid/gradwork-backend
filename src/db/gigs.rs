@@ -50,6 +50,19 @@ pub async fn get_all_gigs(db: &DatabaseConnection) -> Result<Vec<gigs::Model>, D
     gigs::Entity::find().all(db).await
 }
 
+/// Fetch gigs with pagination.
+pub async fn get_gigs_paginated(
+    db: &DatabaseConnection,
+    page: u64,
+    limit: u64,
+) -> Result<Vec<gigs::Model>, DbErr> {
+    gigs::Entity::find()
+        .offset((page - 1) * limit)
+        .limit(limit)
+        .all(db)
+        .await
+}
+
 /// Fetch a single gig by ID.
 pub async fn get_gig_by_id(
     db: &DatabaseConnection,

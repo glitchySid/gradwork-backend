@@ -43,6 +43,20 @@ pub async fn get_contracts_by_gig_id(
         .await
 }
 
+/// Fetch all contracts for multiple gigs (batch query for N+1 fix).
+pub async fn get_contracts_by_gig_ids(
+    db: &DatabaseConnection,
+    gig_ids: Vec<Uuid>,
+) -> Result<Vec<contracts::Model>, DbErr> {
+    if gig_ids.is_empty() {
+        return Ok(vec![]);
+    }
+    contracts::Entity::find()
+        .filter(contracts::Column::GigId.is_in(gig_ids))
+        .all(db)
+        .await
+}
+
 /// Fetch all contracts for a specific user (client who sent the contract request).
 pub async fn get_contracts_by_user_id(
     db: &DatabaseConnection,

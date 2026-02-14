@@ -34,6 +34,19 @@ pub async fn get_all_users(db: &DatabaseConnection) -> Result<Vec<users::Model>,
     users::Entity::find().all(db).await
 }
 
+/// Fetch users with pagination.
+pub async fn get_users_paginated(
+    db: &DatabaseConnection,
+    page: u64,
+    limit: u64,
+) -> Result<Vec<users::Model>, DbErr> {
+    users::Entity::find()
+        .offset((page - 1) * limit)
+        .limit(limit)
+        .all(db)
+        .await
+}
+
 /// Fetch a single user by ID.
 pub async fn get_user_by_id(
     db: &DatabaseConnection,
