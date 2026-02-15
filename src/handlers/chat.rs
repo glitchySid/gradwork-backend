@@ -65,6 +65,30 @@ pub async fn mark_message_read(
     let message_id = path.into_inner();
     let user_id = user.0.id;
 
+    let message = match message_db::get_message_by_id(db.get_ref(), message_id).await {
+        Ok(Some(msg)) => msg,
+        Ok(None) => {
+            return HttpResponse::NotFound().json(serde_json::json!({
+                "error": format!("Message {message_id} not found"),
+            }));
+        }
+        Err(e) => {
+            return HttpResponse::InternalServerError().json(serde_json::json!({
+                "error": format!("Database error: {e}"),
+            }));
+        }
+    };
+
+    if let Err(resp) = verify_contract_party(db.get_ref(), message.contract_id, user_id).await {
+        return resp;
+    }
+
+    if message.sender_id == user_id {
+        return HttpResponse::Forbidden().json(serde_json::json!({
+            "error": "You cannot mark your own message as read",
+        }));
+    }
+
     match message_db::mark_message_as_read(db.get_ref(), message_id).await {
         Ok(msg) => {
             let _ = cache

@@ -37,6 +37,14 @@ pub async fn get_messages_by_contract(
         .await
 }
 
+/// Fetch a single message by ID.
+pub async fn get_message_by_id(
+    db: &DatabaseConnection,
+    message_id: Uuid,
+) -> Result<Option<messages::Model>, DbErr> {
+    messages::Entity::find_by_id(message_id).one(db).await
+}
+
 /// Mark a single message as read.
 pub async fn mark_message_as_read(
     db: &DatabaseConnection,

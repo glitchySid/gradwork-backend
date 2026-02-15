@@ -3,6 +3,12 @@ use uuid::Uuid;
 
 use crate::models::users::{self, CompleteProfile, CreateUserFromAuth, UpdateUser};
 
+fn is_unique_violation(err: &DbErr) -> bool {
+    err.to_string()
+        .to_lowercase()
+        .contains("duplicate key value violates unique constraint")
+}
+
 /// Create a new user from Supabase Auth JWT claims (called by auth middleware).
 pub async fn find_or_create_from_auth(
     db: &DatabaseConnection,
@@ -26,7 +32,17 @@ pub async fn find_or_create_from_auth(
         updated_at: Set(None),
     };
 
-    new_user.insert(db).await
+    match new_user.insert(db).await {
+        Ok(created) => Ok(created),
+        Err(e) if is_unique_violation(&e) => {
+            // Handle concurrent first-login races where another request inserted first.
+            users::Entity::find_by_id(input.id)
+                .one(db)
+                .await?
+                .ok_or(e)
+        }
+        Err(e) => Err(e),
+    }
 }
 
 /// Fetch all users.

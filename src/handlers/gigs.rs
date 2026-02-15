@@ -132,11 +132,19 @@ pub async fn get_gigs_by_user_id(
 
 /// DELETE /api/gigs/user/{user_id} — delete all gigs by user_id (requires authentication).
 pub async fn delete_all_gig_by_user_id(
-    _user: AuthenticatedUser,
+    user: AuthenticatedUser,
     db: web::Data<DatabaseConnection>,
     path: web::Path<Uuid>,
 ) -> impl Responder {
     let user_id = path.into_inner();
+
+    // Users can only delete their own gigs.
+    if user.0.id != user_id {
+        return HttpResponse::Forbidden().json(serde_json::json!({
+            "error": "You can only delete your own gigs",
+        }));
+    }
+
     match gig_db::delete_all_gig_by_user_id(db.get_ref(), user_id).await {
         Ok(()) => HttpResponse::NoContent().finish(),
         Err(e) => HttpResponse::InternalServerError().json(serde_json::json!({
@@ -204,12 +212,19 @@ pub async fn update_gig(
 
 /// DELETE /api/gigs/{id} — delete a gig (requires authentication).
 pub async fn delete_gig(
-    _user: AuthenticatedUser,
+    user: AuthenticatedUser,
     db: web::Data<DatabaseConnection>,
     cache: web::Data<Arc<RedisCache>>,
     path: web::Path<Uuid>,
 ) -> impl Responder {
     let id = path.into_inner();
+    let user_id = user.0.id;
+
+    // Verify the user owns the gig.
+    if let Err(resp) = verify_gig_owner(db.get_ref(), id, user_id).await {
+        return resp;
+    }
+
     match gig_db::delete_gig(db.get_ref(), id).await {
         Ok(result) => {
             if result.rows_affected > 0 {

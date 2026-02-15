@@ -1,6 +1,7 @@
 use jsonwebtoken::{Algorithm, DecodingKey, TokenData, Validation, decode, decode_header};
 use moka::future::Cache;
 use std::sync::Arc;
+use tracing::debug;
 
 const JWKS_URL_TEMPLATE: &str = "https://{}.supabase.co/auth/v1/.well-known/jwks.json";
 
@@ -40,8 +41,7 @@ impl JwksCache {
     }
 
     async fn fetch_jwks(&self) -> Result<serde_json::Value, String> {
-        println!("DEBUG: Fetching JWKS from: {}", self.jwks_url);
-        println!("DEBUG: Using apikey prefix: {}", &self.anon_key[..50]);
+        debug!("Fetching JWKS from {}", self.jwks_url);
 
         let response: reqwest::Response = self
             .client
@@ -52,16 +52,14 @@ impl JwksCache {
             .map_err(|e| format!("Failed to fetch JWKS: {e}"))?;
 
         let status = response.status();
+        if !status.is_success() {
+            return Err(format!("Failed to fetch JWKS: HTTP {status}"));
+        }
+
         let text = response
             .text()
             .await
             .map_err(|e| format!("Failed to get JWKS text: {e}"))?;
-        let display_len = std::cmp::min(500, text.len());
-        println!(
-            "DEBUG: JWKS response status: {}, body: {}",
-            status,
-            &text[..display_len]
-        );
 
         serde_json::from_str(&text).map_err(|e| format!("Failed to parse JWKS JSON: {e}"))
     }

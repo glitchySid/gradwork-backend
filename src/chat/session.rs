@@ -229,6 +229,48 @@ async fn handle_client_message(
         }
 
         ClientMessage::MarkRead { message_id } => {
+            let message = match message_db::get_message_by_id(db, message_id).await {
+                Ok(Some(msg)) => msg,
+                Ok(None) => {
+                    let err = ServerMessage::Error {
+                        message: format!("Message {message_id} not found"),
+                    };
+                    let _ = session
+                        .text(serde_json::to_string(&err).unwrap_or_default())
+                        .await;
+                    return;
+                }
+                Err(e) => {
+                    let err = ServerMessage::Error {
+                        message: format!("Database error: {e}"),
+                    };
+                    let _ = session
+                        .text(serde_json::to_string(&err).unwrap_or_default())
+                        .await;
+                    return;
+                }
+            };
+
+            if message.contract_id != contract_id {
+                let err = ServerMessage::Error {
+                    message: "You cannot mark messages from another contract as read".to_string(),
+                };
+                let _ = session
+                    .text(serde_json::to_string(&err).unwrap_or_default())
+                    .await;
+                return;
+            }
+
+            if message.sender_id == user_id {
+                let err = ServerMessage::Error {
+                    message: "You cannot mark your own message as read".to_string(),
+                };
+                let _ = session
+                    .text(serde_json::to_string(&err).unwrap_or_default())
+                    .await;
+                return;
+            }
+
             match message_db::mark_message_as_read(db, message_id).await {
                 Ok(_) => {
                     // Notify all participants that this message was read.

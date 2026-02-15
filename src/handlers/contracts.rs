@@ -7,6 +7,12 @@ use crate::db::contracts as contract_db;
 use crate::db::gigs as gig_db;
 use crate::models::contracts::{CreateContract, Status, UpdateContractStatus};
 
+fn is_unique_violation(err: &sea_orm::DbErr) -> bool {
+    let msg = err.to_string().to_lowercase();
+    msg.contains("duplicate key value violates unique constraint")
+        || msg.contains("idx_contracts_gig_user_unique")
+}
+
 /// POST /api/contracts — a client sends a contract request on a freelancer's gig.
 ///
 /// The `user_id` is automatically set from the authenticated user's JWT (the client).
@@ -42,22 +48,8 @@ pub async fn create_contract(
         }));
     }
 
-    // 3. Check for duplicate contract (one per client per gig).
-    match contract_db::contract_exists_for_gig_and_user(db.get_ref(), gig_id, client_id).await {
-        Ok(true) => {
-            return HttpResponse::Conflict().json(serde_json::json!({
-                "error": "You have already sent a contract request for this gig",
-            }));
-        }
-        Err(e) => {
-            return HttpResponse::InternalServerError().json(serde_json::json!({
-                "error": format!("Database error: {e}"),
-            }));
-        }
-        _ => {}
-    }
-
-    // 4. Create the contract.
+    // 3. Create the contract. The DB unique index on (gig_id, user_id) is the source of truth
+    // for duplicate prevention under concurrency.
     let input = CreateContract {
         gig_id,
         user_id: client_id,
@@ -65,6 +57,9 @@ pub async fn create_contract(
 
     match contract_db::insert_contract(db.get_ref(), input).await {
         Ok(contract) => HttpResponse::Created().json(contract),
+        Err(e) if is_unique_violation(&e) => HttpResponse::Conflict().json(serde_json::json!({
+            "error": "You have already sent a contract request for this gig",
+        })),
         Err(e) => HttpResponse::InternalServerError().json(serde_json::json!({
             "error": format!("Failed to create contract: {e}"),
         })),
