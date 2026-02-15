@@ -1,5 +1,6 @@
 use actix_web::{HttpResponse, Responder, web};
 use sea_orm::DatabaseConnection;
+use std::collections::HashSet;
 use uuid::Uuid;
 
 use crate::auth::middleware::AuthenticatedUser;
@@ -108,11 +109,12 @@ pub async fn get_contracts(
         }
     };
 
-    // Merge and deduplicate (a user could be both client and gig owner in theory,
+    // Merge and deduplicate in O(n) (a user could be both client and gig owner in theory,
     // though we prevent self-contracts).
-    let mut all_contracts = as_client;
-    for contract in as_freelancer {
-        if !all_contracts.iter().any(|c| c.id == contract.id) {
+    let mut seen_contract_ids: HashSet<Uuid> = HashSet::new();
+    let mut all_contracts = Vec::with_capacity(as_client.len() + as_freelancer.len());
+    for contract in as_client.into_iter().chain(as_freelancer.into_iter()) {
+        if seen_contract_ids.insert(contract.id) {
             all_contracts.push(contract);
         }
     }

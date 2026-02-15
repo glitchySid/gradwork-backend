@@ -71,6 +71,21 @@ pub async fn get_user_by_id(
     users::Entity::find_by_id(id).one(db).await
 }
 
+/// Fetch users by a list of IDs.
+pub async fn get_users_by_ids(
+    db: &DatabaseConnection,
+    ids: Vec<Uuid>,
+) -> Result<Vec<users::Model>, DbErr> {
+    if ids.is_empty() {
+        return Ok(vec![]);
+    }
+
+    users::Entity::find()
+        .filter(users::Column::Id.is_in(ids))
+        .all(db)
+        .await
+}
+
 /// Complete a user's profile (set username, role, display_name after first login).
 pub async fn complete_profile(
     db: &DatabaseConnection,

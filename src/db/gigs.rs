@@ -33,6 +33,21 @@ pub async fn get_gigs_by_user_id(
         .await
 }
 
+/// Get gigs by a list of IDs.
+pub async fn get_gigs_by_ids(
+    db: &DatabaseConnection,
+    gig_ids: Vec<Uuid>,
+) -> Result<Vec<gigs::Model>, DbErr> {
+    if gig_ids.is_empty() {
+        return Ok(vec![]);
+    }
+
+    gigs::Entity::find()
+        .filter(gigs::Column::Id.is_in(gig_ids))
+        .all(db)
+        .await
+}
+
 /// Delete a gig by user_id
 pub async fn delete_all_gig_by_user_id(
     db: &DatabaseConnection,
@@ -53,11 +68,27 @@ pub async fn get_all_gigs(db: &DatabaseConnection) -> Result<Vec<gigs::Model>, D
 /// Fetch gigs with pagination.
 pub async fn get_gigs_paginated(
     db: &DatabaseConnection,
-    page: u64,
     limit: u64,
+    cursor_created_at: Option<chrono::DateTime<chrono::Utc>>,
+    cursor_id: Option<Uuid>,
 ) -> Result<Vec<gigs::Model>, DbErr> {
-    gigs::Entity::find()
-        .offset((page - 1) * limit)
+    let mut query = gigs::Entity::find();
+
+    if let (Some(cursor_created_at), Some(cursor_id)) = (cursor_created_at, cursor_id) {
+        query = query.filter(
+            Condition::any()
+                .add(gigs::Column::CreatedAt.lt(cursor_created_at))
+                .add(
+                    Condition::all()
+                        .add(gigs::Column::CreatedAt.eq(cursor_created_at))
+                        .add(gigs::Column::Id.lt(cursor_id)),
+                ),
+        );
+    }
+
+    query
+        .order_by_desc(gigs::Column::CreatedAt)
+        .order_by_desc(gigs::Column::Id)
         .limit(limit)
         .all(db)
         .await

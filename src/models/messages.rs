@@ -82,8 +82,9 @@ impl From<Model> for MessageResponse {
 /// Query parameters for paginated message history.
 #[derive(Debug, Clone, Deserialize)]
 pub struct MessageQuery {
-    pub page: Option<u64>,
     pub limit: Option<u64>,
+    pub cursor_created_at: Option<chrono::DateTime<chrono::Utc>>,
+    pub cursor_id: Option<Uuid>,
 }
 
 /// Response for the conversations list endpoint.

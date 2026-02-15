@@ -1,5 +1,6 @@
 use sea_orm::prelude::Expr;
 use sea_orm::*;
+use std::collections::{HashMap, HashSet};
 use uuid::Uuid;
 
 use crate::models::messages::{self, CreateMessage};
@@ -25,13 +26,27 @@ pub async fn insert_message(
 pub async fn get_messages_by_contract(
     db: &DatabaseConnection,
     contract_id: Uuid,
-    page: u64,
     limit: u64,
+    cursor_created_at: Option<chrono::DateTime<chrono::Utc>>,
+    cursor_id: Option<Uuid>,
 ) -> Result<Vec<messages::Model>, DbErr> {
-    messages::Entity::find()
-        .filter(messages::Column::ContractId.eq(contract_id))
+    let mut query = messages::Entity::find().filter(messages::Column::ContractId.eq(contract_id));
+
+    if let (Some(cursor_created_at), Some(cursor_id)) = (cursor_created_at, cursor_id) {
+        query = query.filter(
+            Condition::any()
+                .add(messages::Column::CreatedAt.lt(cursor_created_at))
+                .add(
+                    Condition::all()
+                        .add(messages::Column::CreatedAt.eq(cursor_created_at))
+                        .add(messages::Column::Id.lt(cursor_id)),
+                ),
+        );
+    }
+
+    query
         .order_by_desc(messages::Column::CreatedAt)
-        .offset((page - 1) * limit)
+        .order_by_desc(messages::Column::Id)
         .limit(limit)
         .all(db)
         .await
@@ -92,6 +107,31 @@ pub async fn count_unread_for_contract(
         .await
 }
 
+/// Count unread messages for many contracts in one query and return a contract_id -> unread_count map.
+pub async fn count_unread_for_contracts(
+    db: &DatabaseConnection,
+    contract_ids: Vec<Uuid>,
+    user_id: Uuid,
+) -> Result<HashMap<Uuid, u64>, DbErr> {
+    if contract_ids.is_empty() {
+        return Ok(HashMap::new());
+    }
+
+    let unread_messages = messages::Entity::find()
+        .filter(messages::Column::ContractId.is_in(contract_ids))
+        .filter(messages::Column::SenderId.ne(user_id))
+        .filter(messages::Column::IsRead.eq(false))
+        .all(db)
+        .await?;
+
+    let mut counts: HashMap<Uuid, u64> = HashMap::new();
+    for message in unread_messages {
+        *counts.entry(message.contract_id).or_insert(0) += 1;
+    }
+
+    Ok(counts)
+}
+
 /// Get the latest message for a contract.
 pub async fn get_latest_message_for_contract(
     db: &DatabaseConnection,
@@ -102,4 +142,33 @@ pub async fn get_latest_message_for_contract(
         .order_by_desc(messages::Column::CreatedAt)
         .one(db)
         .await
+}
+
+/// Get latest messages for many contracts in one query and return a contract_id -> message map.
+pub async fn get_latest_messages_for_contracts(
+    db: &DatabaseConnection,
+    contract_ids: Vec<Uuid>,
+) -> Result<HashMap<Uuid, messages::Model>, DbErr> {
+    if contract_ids.is_empty() {
+        return Ok(HashMap::new());
+    }
+
+    let rows = messages::Entity::find()
+        .filter(messages::Column::ContractId.is_in(contract_ids))
+        .order_by_asc(messages::Column::ContractId)
+        .order_by_desc(messages::Column::CreatedAt)
+        .order_by_desc(messages::Column::Id)
+        .all(db)
+        .await?;
+
+    let mut latest: HashMap<Uuid, messages::Model> = HashMap::new();
+    let mut seen: HashSet<Uuid> = HashSet::new();
+
+    for row in rows {
+        if seen.insert(row.contract_id) {
+            latest.insert(row.contract_id, row);
+        }
+    }
+
+    Ok(latest)
 }

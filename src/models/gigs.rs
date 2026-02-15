@@ -60,3 +60,16 @@ pub struct UpdateGig {
     pub price: Option<f64>,
     pub thumbnail_url: Option<String>,
 }
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct GigListQuery {
+    pub limit: Option<u64>,
+    pub cursor_created_at: Option<chrono::DateTime<chrono::Utc>>,
+    pub cursor_id: Option<Uuid>,
+}
+
+impl GigListQuery {
+    pub fn limit(&self) -> u64 {
+        self.limit.unwrap_or(20).min(100)
+    }
+}

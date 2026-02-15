@@ -8,8 +8,7 @@ use crate::auth::middleware::AuthenticatedUser;
 use crate::auth::authorization::verify_gig_owner;
 use crate::cache::{RedisCache, keys};
 use crate::db::gigs as gig_db;
-use crate::models::gigs::{CreateGig, UpdateGig};
-use crate::models::PaginationQuery;
+use crate::models::gigs::{CreateGig, GigListQuery, UpdateGig};
 
 /// GET /api/gigs — list all gigs with pagination (requires authentication).
 /// Query params: ?page=1&limit=20
@@ -17,16 +16,23 @@ pub async fn get_gigs(
     // _user: AuthenticatedUser,
     db: web::Data<DatabaseConnection>,
     cache: web::Data<Arc<RedisCache>>,
-    query: web::Query<PaginationQuery>,
+    query: web::Query<GigListQuery>,
 ) -> impl Responder {
-    let page = query.page();
     let limit = query.limit();
-    let cache_key = keys::gig_list(&format!("p{page}:l{limit}"));
+    let cursor_created_at = query.cursor_created_at;
+    let cursor_id = query.cursor_id;
+    let cursor_part = match (cursor_created_at, cursor_id) {
+        (Some(ts), Some(id)) => format!("c{}:{}", ts.to_rfc3339(), id),
+        _ => "start".to_string(),
+    };
+    let cache_key = keys::gig_list(&format!("l{limit}:{cursor_part}"));
 
     match cache.get::<serde_json::Value>(&cache_key).await {
         Ok(Some(cached)) => HttpResponse::Ok().json(cached),
         Ok(None) => {
-            match gig_db::get_gigs_paginated(db.get_ref(), page, limit).await {
+            match gig_db::get_gigs_paginated(db.get_ref(), limit, cursor_created_at, cursor_id)
+                .await
+            {
                 Ok(gigs) => {
                     let _ = cache.set(&cache_key, &gigs, Some(300)).await;
                     HttpResponse::Ok().json(gigs)
@@ -38,7 +44,9 @@ pub async fn get_gigs(
         }
         Err(e) => {
             tracing::warn!("Cache error: {}", e);
-            match gig_db::get_gigs_paginated(db.get_ref(), page, limit).await {
+            match gig_db::get_gigs_paginated(db.get_ref(), limit, cursor_created_at, cursor_id)
+                .await
+            {
                 Ok(gigs) => HttpResponse::Ok().json(gigs),
                 Err(e) => HttpResponse::InternalServerError().json(serde_json::json!({
                     "error": format!("Failed to fetch gigs: {e}"),

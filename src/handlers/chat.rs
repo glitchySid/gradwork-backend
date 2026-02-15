@@ -1,5 +1,6 @@
 use actix_web::{HttpResponse, Responder, web};
 use sea_orm::DatabaseConnection;
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use uuid::Uuid;
 use tracing;
@@ -31,9 +32,14 @@ pub async fn get_messages(
         return resp;
     }
 
-    let page = query.page.unwrap_or(1).max(1);
     let limit = query.limit.unwrap_or(50).min(100);
-    let cache_key = format!("messages:{contract_id}:{page}:{limit}");
+    let cursor_created_at = query.cursor_created_at;
+    let cursor_id = query.cursor_id;
+    let cursor_part = match (cursor_created_at, cursor_id) {
+        (Some(ts), Some(id)) => format!("c{}:{}", ts.to_rfc3339(), id),
+        _ => "start".to_string(),
+    };
+    let cache_key = format!("messages:{contract_id}:{limit}:{cursor_part}");
 
     match cache.get::<Vec<MessageResponse>>(&cache_key).await {
         Ok(Some(cached)) => return HttpResponse::Ok().json(cached),
@@ -41,7 +47,15 @@ pub async fn get_messages(
         Err(e) => tracing::warn!("Cache error: {}", e),
     }
 
-    match message_db::get_messages_by_contract(db.get_ref(), contract_id, page, limit).await {
+    match message_db::get_messages_by_contract(
+        db.get_ref(),
+        contract_id,
+        limit,
+        cursor_created_at,
+        cursor_id,
+    )
+    .await
+    {
         Ok(messages) => {
             let response: Vec<MessageResponse> = messages.into_iter().map(|m| m.into()).collect();
             let _ = cache.set(&cache_key, &response, Some(60)).await;
@@ -152,17 +166,75 @@ pub async fn get_conversations(
         }
     };
 
-    // Merge and deduplicate, keeping only Accepted contracts.
-    let mut all_contracts = as_client;
-    for contract in freelancer_contracts {
-        if !all_contracts.iter().any(|c| c.id == contract.id) {
-            all_contracts.push(contract);
+    // Merge and deduplicate in O(n), keeping only Accepted contracts.
+    let mut seen_contract_ids: HashSet<Uuid> = HashSet::new();
+    let mut accepted_contracts = Vec::new();
+    for contract in as_client.into_iter().chain(freelancer_contracts.into_iter()) {
+        if seen_contract_ids.insert(contract.id) && contract.status == Status::Accepted {
+            accepted_contracts.push(contract);
         }
     }
-    let accepted_contracts: Vec<_> = all_contracts
-        .into_iter()
-        .filter(|c| c.status == Status::Accepted)
-        .collect();
+
+    let unique_gig_ids: HashSet<Uuid> = accepted_contracts.iter().map(|c| c.gig_id).collect();
+    let gigs = match gig_db::get_gigs_by_ids(db.get_ref(), unique_gig_ids.into_iter().collect()).await
+    {
+        Ok(g) => g,
+        Err(e) => {
+            return HttpResponse::InternalServerError().json(serde_json::json!({
+                "error": format!("Database error: {e}"),
+            }));
+        }
+    };
+    let gig_owner_by_id: HashMap<Uuid, Uuid> = gigs.into_iter().map(|g| (g.id, g.user_id)).collect();
+
+    let mut other_user_ids: HashSet<Uuid> = HashSet::new();
+    for contract in &accepted_contracts {
+        if contract.user_id == user_id {
+            if let Some(owner_id) = gig_owner_by_id.get(&contract.gig_id) {
+                other_user_ids.insert(*owner_id);
+            }
+        } else {
+            other_user_ids.insert(contract.user_id);
+        }
+    }
+
+    let users = match crate::db::users::get_users_by_ids(
+        db.get_ref(),
+        other_user_ids.into_iter().collect(),
+    )
+    .await
+    {
+        Ok(u) => u,
+        Err(e) => {
+            return HttpResponse::InternalServerError().json(serde_json::json!({
+                "error": format!("Database error: {e}"),
+            }));
+        }
+    };
+    let user_name_by_id: HashMap<Uuid, Option<String>> =
+        users.into_iter().map(|u| (u.id, u.display_name)).collect();
+
+    let contract_ids: Vec<Uuid> = accepted_contracts.iter().map(|c| c.id).collect();
+    let latest_by_contract =
+        match message_db::get_latest_messages_for_contracts(db.get_ref(), contract_ids.clone())
+            .await
+        {
+            Ok(m) => m,
+            Err(e) => {
+                return HttpResponse::InternalServerError().json(serde_json::json!({
+                    "error": format!("Database error: {e}"),
+                }));
+            }
+        };
+    let unread_by_contract =
+        match message_db::count_unread_for_contracts(db.get_ref(), contract_ids, user_id).await {
+            Ok(c) => c,
+            Err(e) => {
+                return HttpResponse::InternalServerError().json(serde_json::json!({
+                    "error": format!("Database error: {e}"),
+                }));
+            }
+        };
 
     // Build conversation summaries.
     let mut summaries: Vec<ConversationSummary> = Vec::new();
@@ -171,9 +243,9 @@ pub async fn get_conversations(
         // Determine the other user's ID.
         let other_user_id = if contract.user_id == user_id {
             // Current user is the client — the other party is the freelancer (gig owner).
-            match gig_db::get_gig_by_id(db.get_ref(), contract.gig_id).await {
-                Ok(Some(gig)) => gig.user_id,
-                _ => continue,
+            match gig_owner_by_id.get(&contract.gig_id) {
+                Some(gig_owner_id) => *gig_owner_id,
+                None => continue,
             }
         } else {
             // Current user is the freelancer — the other party is the client.
@@ -181,22 +253,14 @@ pub async fn get_conversations(
         };
 
         // Get the other user's display name.
-        let other_user_name =
-            match crate::db::users::get_user_by_id(db.get_ref(), other_user_id).await {
-                Ok(Some(u)) => u.display_name,
-                _ => None,
-            };
+        let other_user_name = user_name_by_id
+            .get(&other_user_id)
+            .cloned()
+            .unwrap_or(None);
 
-        // Get the latest message and unread count.
-        let latest_msg =
-            message_db::get_latest_message_for_contract(db.get_ref(), contract.id).await;
-        let unread = message_db::count_unread_for_contract(db.get_ref(), contract.id, user_id)
-            .await
-            .unwrap_or(0);
-
-        let (last_message, last_message_at) = match latest_msg {
-            Ok(Some(msg)) => (Some(msg.content), Some(msg.created_at)),
-            _ => (None, None),
+        let (last_message, last_message_at) = match latest_by_contract.get(&contract.id) {
+            Some(msg) => (Some(msg.content.clone()), Some(msg.created_at)),
+            None => (None, None),
         };
 
         summaries.push(ConversationSummary {
@@ -205,7 +269,7 @@ pub async fn get_conversations(
             other_user_name,
             last_message,
             last_message_at,
-            unread_count: unread,
+            unread_count: *unread_by_contract.get(&contract.id).unwrap_or(&0),
         });
     }
 

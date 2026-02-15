@@ -76,10 +76,9 @@ impl RedisCache {
     /// Delete multiple keys matching a pattern using SCAN (production-safe)
     pub async fn delete_pattern(&self, pattern: &str) -> redis::RedisResult<()> {
         let mut conn = self.connection.clone();
-        
+
         let mut cursor = 0u64;
-        let mut keys_to_delete = Vec::new();
-        
+
         loop {
             let (next_cursor, batch): (u64, Vec<String>) = redis::cmd("SCAN")
                 .arg(cursor)
@@ -89,21 +88,16 @@ impl RedisCache {
                 .arg(100)
                 .query_async(&mut conn)
                 .await?;
-            
-            keys_to_delete.extend(batch);
+
+            if !batch.is_empty() {
+                let _: () = redis::cmd("DEL").arg(batch).query_async(&mut conn).await?;
+            }
+
             cursor = next_cursor;
-            
+
             if cursor == 0 {
                 break;
             }
-        }
-
-        if !keys_to_delete.is_empty() {
-            let mut conn = self.connection.clone();
-            let _: () = redis::cmd("DEL")
-                .arg(&keys_to_delete)
-                .query_async(&mut conn)
-                .await?;
         }
 
         Ok(())

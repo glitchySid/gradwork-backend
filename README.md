@@ -240,7 +240,17 @@ Delete a user. Users can only delete their own account.
 
 #### `GET /api/gigs`
 
-List all gigs. Does **not** require authentication.
+List gigs (cursor pagination). Does **not** require authentication.
+
+**Query parameters:**
+
+| Param             | Type      | Default | Description |
+|------------------|-----------|---------|-------------|
+| limit            | u64       | 20      | Items per page (max 100). |
+| cursor_created_at| datetime  | none    | Cursor timestamp from the last item of the previous page. |
+| cursor_id        | uuid      | none    | Cursor ID from the last item of the previous page. |
+
+If `cursor_created_at` and `cursor_id` are omitted, the first page is returned. Results are ordered by newest first (`created_at desc, id desc`).
 
 **Response (200):** Array of gig objects.
 
@@ -325,22 +335,24 @@ All fields are optional.
 
 #### `DELETE /api/gigs/{id}`
 
-Delete a gig by ID.
+Delete a gig by ID. Only the gig owner can delete it.
 
 **Headers:** `Authorization: Bearer <token>`
 
 **Response (200):** `{ "message": "Gig {id} deleted" }`
+**Response (403):** `{ "error": "You do not own this gig" }`
 **Response (404):** `{ "error": "Gig {id} not found" }`
 
 ---
 
 #### `DELETE /api/gigs/user/{user_id}`
 
-Delete all gigs by a specific user.
+Delete all gigs by a specific user. Users can only delete their own gigs.
 
 **Headers:** `Authorization: Bearer <token>`
 
 **Response (204):** No content.
+**Response (403):** `{ "error": "You can only delete your own gigs" }`
 
 ---
 
@@ -612,6 +624,8 @@ ws.onmessage = (event) => {
 { "type": "mark_read", "message_id": "uuid-of-the-message" }
 ```
 
+`message_id` must belong to the same `contract_id` room and must be a message sent by the other party.
+
 **Typing indicator:**
 
 ```json
@@ -672,7 +686,7 @@ ws.onmessage = (event) => {
 
 #### `GET /api/chat/{contract_id}/messages`
 
-Fetch paginated message history for a contract. Messages are returned in reverse chronological order (newest first).
+Fetch message history for a contract (cursor pagination). Messages are returned in reverse chronological order (newest first).
 
 **Headers:** `Authorization: Bearer <token>`
 
@@ -680,8 +694,11 @@ Fetch paginated message history for a contract. Messages are returned in reverse
 
 | Param | Type   | Default | Description          |
 |-------|--------|---------|----------------------|
-| page  | u64    | 1       | Page number (1-based)|
-| limit | u64    | 50      | Messages per page (max 100) |
+| limit | u64    | 50      | Messages per page (max 100). |
+| cursor_created_at | datetime | none | Cursor timestamp from the last message of the previous page. |
+| cursor_id | uuid | none | Cursor ID from the last message of the previous page. |
+
+If `cursor_created_at` and `cursor_id` are omitted, the first page is returned. Results are ordered by newest first (`created_at desc, id desc`).
 
 **Response (200):**
 
@@ -705,7 +722,7 @@ Fetch paginated message history for a contract. Messages are returned in reverse
 
 #### `PUT /api/chat/messages/{id}/read`
 
-Mark a specific message as read.
+Mark a specific message as read. Only a contract party can mark a message, and only for messages sent by the other party.
 
 **Headers:** `Authorization: Bearer <token>`
 
@@ -721,6 +738,9 @@ Mark a specific message as read.
   "created_at": "2025-02-10T12:00:00Z"
 }
 ```
+
+**Response (403):** `{ "error": "You cannot mark your own message as read" }`
+**Response (404):** `{ "error": "Message {id} not found" }`
 
 ---
 
