@@ -64,6 +64,7 @@ async fn main() -> std::io::Result<()> {
             .app_data(chat_server.clone())
             .service(web::scope("/api").configure(handlers::init_routes))
     })
+    .workers(12)
     .bind(&bind_addr)?
     .run()
     .await
