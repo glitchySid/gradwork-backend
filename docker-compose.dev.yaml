@@ -1,0 +1,13 @@
+services:
+  backend:
+    image: rust:latest
+    working_dir: /app
+    command: cargo run
+    volumes:
+      - .:/app
+      - cargo_target:/app/target
+      - cargo_registry:/usr/local/cargo/registry
+
+volumes:
+  cargo_target:
+  cargo_registry:

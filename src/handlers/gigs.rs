@@ -8,9 +8,9 @@ use crate::auth::middleware::AuthenticatedUser;
 use crate::auth::authorization::verify_gig_owner;
 use crate::cache::{RedisCache, keys};
 use crate::db::gigs as gig_db;
-use crate::models::gigs::{CreateGig, GigListQuery, UpdateGig};
+use crate::models::gigs::{Categories, CreateGig, GigListQuery, UpdateGig};
 
-/// GET /api/gigs — list all gigs with pagination (requires authentication).
+/// GET /api/gigs — list all gigs with pagination. (NO AUTHENTICATION REQUIRED)
 /// Query params: ?page=1&limit=20
 pub async fn get_gigs(
     // _user: AuthenticatedUser,
@@ -103,6 +103,49 @@ pub async fn get_gig(
     }
 }
 
+/// GET /api/gigs/category/{category} — get gigs by category
+
+pub async fn get_gigs_by_category(
+    db: web::Data<DatabaseConnection>,
+    cache: web::Data<Arc<RedisCache>>,
+    path: web::Path<String>,
+) -> impl Responder {
+    let category_raw = path.into_inner();
+    let category = match parse_category(&category_raw) {
+        Some(c) => c,
+        None => {
+            return HttpResponse::BadRequest().json(serde_json::json!({
+                "error": format!("Invalid category: {category_raw}"),
+            }));
+        }
+    };
+    let cache_key = keys::gigs_by_category(&category_raw.to_lowercase());
+
+    match cache.get::<serde_json::Value>(&cache_key).await {
+        Ok(Some(cached)) => HttpResponse::Ok().json(cached),
+        Ok(None) => {
+            match gig_db::get_gigs_by_category(db.get_ref(), category.clone()).await {
+                Ok(gigs) => {
+                    let _ = cache.set(&cache_key, &gigs, Some(300)).await;
+                    HttpResponse::Ok().json(gigs)
+                }
+                Err(e) => HttpResponse::InternalServerError().json(serde_json::json!({
+                    "error": format!("Database error: {e}"),
+                })),
+            }
+        }
+        Err(e) => {
+            tracing::warn!("Cache error: {}", e);
+            match gig_db::get_gigs_by_category(db.get_ref(), category).await {
+                Ok(gigs) => HttpResponse::Ok().json(gigs),
+                Err(e) => HttpResponse::InternalServerError().json(serde_json::json!({
+                    "error": format!("Database error: {e}"),
+                })),
+            }
+        }
+    }
+}
+
 /// GET /api/gigs/user/{user_id} — get gigs by user_id (requires authentication).
 pub async fn get_gigs_by_user_id(
     _user: AuthenticatedUser,
@@ -115,17 +158,15 @@ pub async fn get_gigs_by_user_id(
 
     match cache.get::<serde_json::Value>(&cache_key).await {
         Ok(Some(cached)) => HttpResponse::Ok().json(cached),
-        Ok(None) => {
-            match gig_db::get_gigs_by_user_id(db.get_ref(), user_id).await {
-                Ok(gigs) => {
-                    let _ = cache.set(&cache_key, &gigs, Some(300)).await;
-                    HttpResponse::Ok().json(gigs)
-                }
-                Err(e) => HttpResponse::InternalServerError().json(serde_json::json!({
-                    "error": format!("Database error: {e}"),
-                })),
+        Ok(None) => match gig_db::get_gigs_by_user_id(db.get_ref(), user_id).await {
+            Ok(gigs) => {
+                let _ = cache.set(&cache_key, &gigs, Some(300)).await;
+                HttpResponse::Ok().json(gigs)
             }
-        }
+            Err(e) => HttpResponse::InternalServerError().json(serde_json::json!({
+                "error": format!("Database error: {e}"),
+            })),
+        },
         Err(e) => {
             tracing::warn!("Cache error: {}", e);
             match gig_db::get_gigs_by_user_id(db.get_ref(), user_id).await {
@@ -251,5 +292,18 @@ pub async fn delete_gig(
         Err(e) => HttpResponse::InternalServerError().json(serde_json::json!({
             "error": format!("Failed to delete gig: {e}"),
         })),
+    }
+}
+
+fn parse_category(input: &str) -> Option<Categories> {
+    match input.to_ascii_lowercase().as_str() {
+        "webdevelopment" | "web_development" => Some(Categories::WebDevelopment),
+        "mobiledevelopment" | "mobile_development" => Some(Categories::MobileDevelopment),
+        "datascience" | "data_science" => Some(Categories::DataScience),
+        "design" => Some(Categories::Design),
+        "videoediting" | "video_editing" => Some(Categories::VideoEditing),
+        "contentwriting" | "content_writing" => Some(Categories::ContentWriting),
+        "other" => Some(Categories::Other),
+        _ => None,
     }
 }

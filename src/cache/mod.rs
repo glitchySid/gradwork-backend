@@ -144,6 +144,11 @@ pub mod keys {
         format!("user:{user_id}:gigs")
     }
 
+    /// Generate key for gigs by category
+    pub fn gigs_by_category(category: &str) -> String {
+        format!("gigs:category:{category}")
+    }
+
     /// Generate key for portfolio items
     pub fn portfolio(user_id: &str) -> String {
         format!("portfolio:{user_id}")

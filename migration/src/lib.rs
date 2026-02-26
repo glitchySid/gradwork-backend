@@ -12,6 +12,7 @@ mod m20250212_000003_add_thumbnail_url_to_gigs;
 mod m20250214_000001_add_indexes;
 mod m20250216_000001_add_thumbnail_url_to_portfolios;
 mod m20250216_000002_add_message_perf_indexes;
+mod m20250226_000001_add_category_to_gigs;
 
 pub struct Migrator;
 
@@ -31,6 +32,7 @@ impl MigratorTrait for Migrator {
             Box::new(m20250214_000001_add_indexes::Migration),
             Box::new(m20250216_000001_add_thumbnail_url_to_portfolios::Migration),
             Box::new(m20250216_000002_add_message_perf_indexes::Migration),
+            Box::new(m20250226_000001_add_category_to_gigs::Migration),
 
         ]
     }

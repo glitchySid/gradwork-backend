@@ -49,6 +49,7 @@ pub fn init_routes(cfg: &mut web::ServiceConfig) {
             .route("/{id}", web::get().to(gigs::get_gig))
             .route("/{id}", web::put().to(gigs::update_gig))
             .route("/{id}", web::delete().to(gigs::delete_gig))
+            .route("/category/{category}", web::get().to(gigs::get_gigs_by_category))
             .route("/user/{user_id}", web::get().to(gigs::get_gigs_by_user_id))
             .route(
                 "/user/{user_id}",

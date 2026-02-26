@@ -280,6 +280,26 @@ Get a single gig by ID.
 
 ---
 
+#### `GET /api/gigs/category/{category}`
+
+Get gigs by category.
+
+**Path parameter:** `category`
+
+Accepted values:
+- `web_development` or `WebDevelopment`
+- `mobile_development` or `MobileDevelopment`
+- `data_science` or `DataScience`
+- `design` or `Design`
+- `video_editing` or `VideoEditing`
+- `content_writing` or `ContentWriting`
+- `other` or `Other`
+
+**Response (200):** Array of gig objects.
+**Response (400):** `{ "error": "Invalid category: {category}" }`
+
+---
+
 #### `GET /api/gigs/user/{user_id}`
 
 Get all gigs created by a specific user.

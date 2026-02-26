@@ -1,7 +1,7 @@
 use sea_orm::*;
 use uuid::Uuid;
 
-use crate::models::gigs::{self, CreateGig, UpdateGig};
+use crate::models::gigs::{self, Categories, CreateGig, UpdateGig};
 
 /// Insert a new gig into the database.
 pub async fn insert_gig(
@@ -15,6 +15,7 @@ pub async fn insert_gig(
         description: Set(input.description),
         price: Set(input.price),
         thumbnail_url: Set(input.thumbnail_url),
+        category: Set(input.category.unwrap_or(Categories::Other)),
         user_id: Set(user_id),
         created_at: Set(chrono::Utc::now()),
     };
@@ -127,6 +128,9 @@ pub async fn update_gig(
     if let Some(thumbnail_url) = input.thumbnail_url {
         active.thumbnail_url = Set(Some(thumbnail_url));
     }
+    if let Some(category) = input.category {
+        active.category = Set(category);
+    }
 
     active.update(db).await
 }
@@ -134,4 +138,15 @@ pub async fn update_gig(
 /// Delete a gig by ID.
 pub async fn delete_gig(db: &DatabaseConnection, id: Uuid) -> Result<DeleteResult, DbErr> {
     gigs::Entity::delete_by_id(id).exec(db).await
+}
+
+/// Get gigs by category
+pub async fn get_gigs_by_category(
+    db: &DatabaseConnection,
+    category: Categories,
+) -> Result<Vec<gigs::Model>, DbErr> {
+    gigs::Entity::find()
+        .filter(gigs::Column::Category.eq(category))
+        .all(db)
+        .await
 }
